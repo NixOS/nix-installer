@@ -5,7 +5,7 @@ version = "3.11.3"
 edition = "2021"
 resolver = "2"
 license = "LGPL-2.1"
-repository = "https://github.com/NixOS/experimental-nix-installer"
+repository = "https://github.com/NixOS/nix-installer"
 
 [features]
 default = ["cli"]

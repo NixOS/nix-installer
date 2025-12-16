@@ -1,4 +1,4 @@
-# Contributing to `experimental-nix-installer`
+# Contributing to `nix-installer`
 
 Most contributions should be made upstream; see the
 [upstream contributing guide](https://github.com/DeterminateSystems/nix-installer/blob/main/CONTRIBUTING.md)
@@ -32,7 +32,7 @@ If using an editor, it may be preferable to adopt an addon to enter the environm
 
 ## Testing Installs
 
-If you're hacking on `experimental-nix-installer`, you likely already have Nix and cannot test locally.
+If you're hacking on `nix-installer`, you likely already have Nix and cannot test locally.
 
 > That's probably a good thing! You should test in a sandbox.
 
@@ -105,7 +105,7 @@ nix build .#hydraJobs.vm-test.rhel-v7.x86_64-linux.all -L -j 4
 For PR review, you can also test arbitrary branches or checkouts like so:
 
 ```bash
-nix build github:NixOS/experimental-nix-installer/${BRANCH}#hydraJobs.vm-test.ubuntu-v22_04.x86_64-linux.install-default -L
+nix build github:NixOS/nix-installer/${BRANCH}#hydraJobs.vm-test.ubuntu-v22_04.x86_64-linux.install-default -L
 ```
 
 <details>
@@ -193,7 +193,7 @@ nix build .#hydraJobs.container-test.ubuntu-v22_04.x86_64-linux.docker -L
 For PR review, you can also test arbitrary branches or checkouts like so:
 
 ```bash
-nix build github:NixOS/experimental-nix-installer/${BRANCH}#hydraJobs.container-test.ubuntu-v22_04.x86_64-linux.podman -L
+nix build github:NixOS/nix-installer/${BRANCH}#hydraJobs.container-test.ubuntu-v22_04.x86_64-linux.podman -L
 ```
 
 <details>
@@ -260,7 +260,6 @@ You can also remove your `$HOME/nix-installer-wsl-tests-temp` folder whenever yo
 > [!NOTE]
 > The documentation below describes a process that used to be mostly manual, and is now driven externally.
 > The material below is generally kept up to date for documentation, manual releases, and external use purposes.
-> Determinate Systems employees, consult the internal release documentation for more details: https://www.notion.so/14553fe7e1dd809eb80affb37228a7c8.
 
 This package uses [Semantic Versioning](https://semver.org/). When determining the version number for a new release refer to Semantic Versioning for guidance. You can use the `check-semver` command alias from within the development environment to validate your changes don't break semver.
 

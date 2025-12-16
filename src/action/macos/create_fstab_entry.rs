@@ -15,7 +15,7 @@ const FSTAB_PATH: &str = "/etc/fstab";
 This action queries `diskutil info` on the volume to fetch it's UUID and
 add the relevant information to `/etc/fstab`.
  */
-// Initially, a `NAME` was used, however in https://github.com/DeterminateSystems/nix-installer/issues/212
+// Initially, a `NAME` was used, however in https://github.com/NixOS/nix-installer/issues/212
 // several users reported issues. Using a UUID resolved the issue for them.
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "action_name", rename = "create_fstab_entry")]

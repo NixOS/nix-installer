@@ -77,12 +77,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check Nixpkgs input
-        uses: DeterminateSystems/flake-checker-action@main
-        with:
-          fail-mode: true
-          check-outdated: false # PRs shouldn't fail because main's nixpkgs is out of date
-
       - name: Install Nix
         uses: ./
         with:

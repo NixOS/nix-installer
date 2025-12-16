@@ -11,10 +11,10 @@ To build a portable Linux binary on a system with Nix:
 # to build a local copy
 nix build -L ".#nix-installer-static"
 # to build the remote main development branch
-nix build -L "github:determinatesystems/nix-installer#nix-installer-static"
+nix build -L "github:NixOS/nix-installer#nix-installer-static"
 # for a specific version of the installer:
 export NIX_INSTALLER_TAG="v0.6.0"
-nix build -L "github:determinatesystems/nix-installer/$NIX_INSTALLER_TAG#nix-installer-static"
+nix build -L "github:NixOS/nix-installer/$NIX_INSTALLER_TAG#nix-installer-static"
 ```
 
 ## On macOS
@@ -23,10 +23,10 @@ nix build -L "github:determinatesystems/nix-installer/$NIX_INSTALLER_TAG#nix-ins
 # to build a local copy
 nix build -L ".#nix-installer"
 # to build the remote main development branch
-nix build -L "github:determinatesystems/nix-installer#nix-installer"
+nix build -L "github:NixOS/nix-installer#nix-installer"
 # for a specific version of the installer:
 export NIX_INSTALLER_TAG="v0.6.0"
-nix build -L "github:determinatesystems/nix-installer/$NIX_INSTALLER_TAG#nix-installer"
+nix build -L "github:NixOS/nix-installer/$NIX_INSTALLER_TAG#nix-installer"
 ```
 
 ## Copying the executable
@@ -38,11 +38,11 @@ You can also add the installer to a system without Nix using [cargo], as there a
 # to build and run a local copy
 RUSTFLAGS="--cfg tokio_unstable" cargo run -- --help
 # to build the remote main development branch
-RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/DeterminateSystems/nix-installer
+RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/NixOS/nix-installer
 nix-installer --help
 # for a specific version of the installer:
 export NIX_INSTALLER_TAG="v0.6.0"
-RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/DeterminateSystems/nix-installer --tag $NIX_INSTALLER_TAG
+RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/NixOS/nix-installer --tag $NIX_INSTALLER_TAG
 nix-installer --help
 ```
 

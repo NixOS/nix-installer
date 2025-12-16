@@ -111,9 +111,9 @@ runs:
           echo "Downloading nix-installer $VERSION for $SYSTEM from GitHub releases"
 
           if [ "$VERSION" == "latest" ]; then
-            DOWNLOAD_URL="https://github.com/NixOS/experimental-nix-installer/releases/latest/download/${BINARY_NAME}"
+            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/latest/download/${BINARY_NAME}"
           else
-            DOWNLOAD_URL="https://github.com/NixOS/experimental-nix-installer/releases/download/${VERSION}/${BINARY_NAME}"
+            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/download/${VERSION}/${BINARY_NAME}"
           fi
 
           echo "Downloading from: $DOWNLOAD_URL"
@@ -122,7 +122,7 @@ runs:
           if [ $? -ne 0 ] || [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
             echo "::error ::Failed to download installer binary: $BINARY_NAME"
             echo "::error ::Version: $VERSION"
-            echo "::error ::Check available releases: https://github.com/NixOS/experimental-nix-installer/releases"
+            echo "::error ::Check available releases: https://github.com/NixOS/nix-installer/releases"
             exit 1
           fi
 

@@ -15,7 +15,7 @@ from typing import Any
 
 def get_hydra_evals() -> list[dict[str, Any]]:
     """Fetch evaluations from Hydra jobset."""
-    url = "https://hydra.nixos.org/jobset/experimental-nix-installer/experimental-installer/evals"
+    url = "https://hydra.nixos.org/jobset/nix-installer/nix-installer/evals"
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req) as response:
         data = json.loads(response.read().decode("utf-8"))
