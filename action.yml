@@ -1,0 +1,260 @@
+name: "Install Nix"
+description: "Install Nix using the experimental nix-installer"
+
+inputs:
+  installer-version:
+    description: "Installer version to use from releases (default: latest)"
+    required: false
+    default: "latest"
+  extra-conf:
+    description: "Extra configuration lines to append to /etc/nix/nix.conf"
+    required: false
+    default: ""
+  logger:
+    description: "Logger format: compact, full, pretty, json"
+    required: false
+    default: "compact"
+  verbosity:
+    description: "Verbosity level: 0 (info), 1 (debug), 2 (trace)"
+    required: false
+    default: "0"
+  add-channel:
+    description: "Setup the default system channels"
+    required: false
+    default: "false"
+  dogfood:
+    description: "Use a locally built installer instead of downloading from releases (for CI)"
+    required: false
+    default: "false"
+  dogfood-path:
+    description: "Path to the locally built installer (used with dogfood)"
+    required: false
+    default: ""
+  no-init:
+    description: "Skip init system configuration (Nix will be root-only)"
+    required: false
+    default: "false"
+  trust-runner-user:
+    description: "Add the current user to trusted-users in nix.conf"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect platform
+      shell: bash
+      id: platform
+      run: |
+        case "$RUNNER_OS" in
+          Linux)
+            OS_PART="linux"
+            ;;
+          macOS)
+            OS_PART="darwin"
+            ;;
+          *)
+            echo "::error ::Unsupported RUNNER_OS: $RUNNER_OS. Supported: Linux, macOS"
+            exit 1
+            ;;
+        esac
+
+        case "$RUNNER_ARCH" in
+          X64)
+            ARCH_PART="x86_64"
+            ;;
+          ARM64)
+            ARCH_PART="aarch64"
+            ;;
+          ARM)
+            ARCH_PART="armv7l"
+            ;;
+          *)
+            echo "::error ::Unsupported RUNNER_ARCH: $RUNNER_ARCH. Supported: X64, ARM64, ARM"
+            exit 1
+            ;;
+        esac
+
+        INSTALLER_SYSTEM="${ARCH_PART}-${OS_PART}"
+        echo "system=$INSTALLER_SYSTEM" >> "$GITHUB_OUTPUT"
+        echo "Detected platform: $INSTALLER_SYSTEM (OS=$RUNNER_OS, ARCH=$RUNNER_ARCH)"
+
+    - name: Download installer from release
+      shell: bash
+      id: download
+      run: |
+        SYSTEM="${{ steps.platform.outputs.system }}"
+        BINARY_NAME="nix-installer-${SYSTEM}"
+
+        if [ "${{ inputs.dogfood }}" == "true" ]; then
+          DOGFOOD_PATH="${{ inputs.dogfood-path }}"
+          if [ -z "$DOGFOOD_PATH" ]; then
+            echo "::error ::dogfood is enabled but dogfood-path is not set"
+            exit 1
+          fi
+
+          INSTALLER_DIR="$DOGFOOD_PATH"
+          if [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
+            echo "::error ::Installer binary not found at: $INSTALLER_DIR/$BINARY_NAME"
+            exit 1
+          fi
+
+          chmod +x "$INSTALLER_DIR/$BINARY_NAME"
+          echo "path=$INSTALLER_DIR" >> "$GITHUB_OUTPUT"
+          echo "Using locally built installer: $INSTALLER_DIR/$BINARY_NAME"
+        else
+          VERSION="${{ inputs.installer-version }}"
+          INSTALLER_DIR="/tmp/nix-installer"
+
+          mkdir -p "$INSTALLER_DIR"
+
+          echo "Downloading nix-installer $VERSION for $SYSTEM from GitHub releases"
+
+          if [ "$VERSION" == "latest" ]; then
+            DOWNLOAD_URL="https://github.com/NixOS/experimental-nix-installer/releases/latest/download/${BINARY_NAME}"
+          else
+            DOWNLOAD_URL="https://github.com/NixOS/experimental-nix-installer/releases/download/${VERSION}/${BINARY_NAME}"
+          fi
+
+          echo "Downloading from: $DOWNLOAD_URL"
+          curl -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
+
+          if [ $? -ne 0 ] || [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
+            echo "::error ::Failed to download installer binary: $BINARY_NAME"
+            echo "::error ::Version: $VERSION"
+            echo "::error ::Check available releases: https://github.com/NixOS/experimental-nix-installer/releases"
+            exit 1
+          fi
+
+          chmod +x "$INSTALLER_DIR/$BINARY_NAME"
+          echo "path=$INSTALLER_DIR" >> "$GITHUB_OUTPUT"
+          echo "Downloaded installer to: $INSTALLER_DIR/$BINARY_NAME"
+        fi
+
+    - name: Run nix-installer
+      shell: bash
+      env:
+        NIX_INSTALLER_NO_CONFIRM: "true"
+      run: |
+        set -x
+        INSTALLER_DIR="${{ steps.download.outputs.path }}"
+        SYSTEM="${{ steps.platform.outputs.system }}"
+        INSTALLER_BINARY="$INSTALLER_DIR/nix-installer-$SYSTEM"
+
+        if [ ! -f "$INSTALLER_BINARY" ]; then
+          echo "::error ::Installer binary not found: $INSTALLER_BINARY"
+          exit 1
+        fi
+
+        INSTALL_ARGS=(--no-confirm --explain)
+
+        if [ -n "${{ inputs.logger }}" ] && [ "${{ inputs.logger }}" != "compact" ]; then
+          INSTALL_ARGS+=(--logger "${{ inputs.logger }}")
+        fi
+
+        case "${{ inputs.verbosity }}" in
+          1)
+            INSTALL_ARGS+=(-v)
+            ;;
+          2)
+            INSTALL_ARGS+=(-vv)
+            ;;
+        esac
+
+        if [ "${{ inputs.add-channel }}" != "true" ]; then
+          INSTALL_ARGS+=(--add-channel)
+        fi
+
+        if [ "${{ inputs.no-init }}" == "true" ]; then
+          INSTALL_ARGS+=(--init none)
+        fi
+
+        # Build extra-conf with optional trusted-users
+        EXTRA_CONF=""
+        if [ "${{ inputs.trust-runner-user }}" == "true" ]; then
+          EXTRA_CONF="trusted-users = root $USER"
+        fi
+        if [ -n "${{ inputs.extra-conf }}" ]; then
+          if [ -n "$EXTRA_CONF" ]; then
+            EXTRA_CONF="$EXTRA_CONF"$'\n'"${{ inputs.extra-conf }}"
+          else
+            EXTRA_CONF="${{ inputs.extra-conf }}"
+          fi
+        fi
+        if [ -n "$EXTRA_CONF" ]; then
+          INSTALL_ARGS+=(--extra-conf "$EXTRA_CONF")
+        fi
+
+        case "$RUNNER_OS" in
+          Linux)
+            PLANNER="linux"
+            ;;
+          macOS)
+            PLANNER=""
+            ;;
+          *)
+            echo "::error ::Unsupported RUNNER_OS: $RUNNER_OS"
+            exit 1
+            ;;
+        esac
+
+        echo "::group::Installation command"
+        echo "PLANNER: '$PLANNER'"
+        echo "add-channel input: ${{ inputs.add-channel }}"
+        if [ -n "$PLANNER" ]; then
+          echo "Full command: sudo $INSTALLER_BINARY install $PLANNER ${INSTALL_ARGS[@]}"
+        else
+          echo "Full command: sudo $INSTALLER_BINARY install ${INSTALL_ARGS[@]}"
+        fi
+        echo "::endgroup::"
+
+        echo "Starting Nix installation..."
+        if [ -n "$PLANNER" ]; then
+          sudo "$INSTALLER_BINARY" install "$PLANNER" "${INSTALL_ARGS[@]}"
+        else
+          sudo "$INSTALLER_BINARY" install "${INSTALL_ARGS[@]}"
+        fi
+
+        if [ $? -ne 0 ]; then
+          echo "::error ::nix-installer failed"
+          exit 1
+        fi
+
+        echo "Nix installation completed successfully"
+
+        # Debug: Check if channels were set up
+        if [ "${{ inputs.add-channel }}" == "true" ]; then
+          echo "::group::Channel verification"
+          echo "Checking if channels were set up (add-channel was requested)..."
+          if [ -f ~/.nix-channels ]; then
+            echo "✓ ~/.nix-channels exists:"
+            cat ~/.nix-channels
+          else
+            echo "✗ ~/.nix-channels does not exist"
+          fi
+          if [ -f /root/.nix-channels ]; then
+            echo "✓ /root/.nix-channels exists:"
+            sudo cat /root/.nix-channels
+          else
+            echo "✗ /root/.nix-channels does not exist"
+          fi
+          echo "::endgroup::"
+        fi
+
+    - name: Setup Nix in PATH
+      shell: bash
+      run: |
+        echo "/nix/var/nix/profiles/default/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+
+        if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+          . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        fi
+
+        if command -v nix >/dev/null 2>&1; then
+          NIX_VERSION=$(nix --version)
+          echo "Nix is ready: $NIX_VERSION"
+        else
+          echo "nix command not immediately available in PATH."
+          exit 1
+        fi

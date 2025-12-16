@@ -215,6 +215,31 @@ podman rmi $IMAGE
 With some container tools, such as [Docker], you can omit `sandbox = false`.
 Omitting this will negatively impact compatibility with container tools like [Podman].
 
+### In GitHub Actions
+
+This repository provides a GitHub Action for installing Nix in CI workflows.
+
+**Basic usage:**
+```yaml
+- uses: NixOS/experimental-nix-installer@main
+```
+
+**Install specific version:**
+```yaml
+- uses: NixOS/experimental-nix-installer@main
+  with:
+    installer-version: v3.11.3-experimental-prerelease
+```
+
+**No-init mode (for containers):**
+```yaml
+- uses: NixOS/experimental-nix-installer@main
+  with:
+    no-init: true
+```
+
+See the [action inputs](action.yml) for all available options.
+
 ### In WSL2
 
 We **strongly recommend** first [enabling systemd][enabling-systemd] and then installing Nix as normal:
