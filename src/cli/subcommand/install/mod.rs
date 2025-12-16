@@ -103,7 +103,7 @@ impl CommandExecute for Install {
 
         let uninstall_command = match Path::new("/nix/nix-installer").exists() {
             true => "/nix/nix-installer uninstall".into(),
-            false => format!("curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix/tag/v{} | sh -s -- uninstall", env!("CARGO_PKG_VERSION")),
+            false => "curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/experimental-installer | sh -s -- uninstall"
         };
 
         if plan.is_some() && maybe_planner.is_some() {
