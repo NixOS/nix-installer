@@ -161,7 +161,7 @@ runs:
             ;;
         esac
 
-        if [ "${{ inputs.add-channel }}" != "true" ]; then
+        if [ "${{ inputs.add-channel }}" == "true" ]; then
           INSTALL_ARGS+=(--add-channel)
         fi
 
