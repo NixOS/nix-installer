@@ -9,7 +9,7 @@
     crane.url = "github:ipetkov/crane/v0.20.0";
 
     nix = {
-      url = "github:NixOS/nix/2.32.4";
+      url = "github:NixOS/nix/2.33.0";
       # Omitting `inputs.nixpkgs.follows = "nixpkgs";` on purpose
     };
 
