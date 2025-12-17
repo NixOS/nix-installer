@@ -220,26 +220,26 @@ runs:
           exit 1
         fi
 
-        echo "Nix installation completed successfully"
-
-        # Debug: Check if channels were set up
-        if [ "${{ inputs.add-channel }}" == "true" ]; then
-          echo "::group::Channel verification"
-          echo "Checking if channels were set up (add-channel was requested)..."
-          if [ -f ~/.nix-channels ]; then
-            echo "✓ ~/.nix-channels exists:"
-            cat ~/.nix-channels
-          else
-            echo "✗ ~/.nix-channels does not exist"
-          fi
-          if [ -f /root/.nix-channels ]; then
-            echo "✓ /root/.nix-channels exists:"
-            sudo cat /root/.nix-channels
-          else
-            echo "✗ /root/.nix-channels does not exist"
-          fi
-          echo "::endgroup::"
+        # Set per user profile
+        if [ -n "${NIX_STATE_HOME-}" ]; then
+            NIX_LINK="$NIX_STATE_HOME/profile"
+        else
+            NIX_LINK="$HOME/.nix-profile"
+            if [ -n "${XDG_STATE_HOME-}" ]; then
+                NIX_LINK_NEW="$XDG_STATE_HOME/nix/profile"
+            else
+                NIX_LINK_NEW="$HOME/.local/state/nix/profile"
+            fi
+            if [ -e "$NIX_LINK_NEW" ]; then
+                if [ -t 2 ] && [ -e "$NIX_LINK" ]; then
+                    warning="\033[1;35mwarning:\033[0m"
+                    printf "$warning Both %s and legacy %s exist; using the former.\n" "$NIX_LINK_NEW" "$NIX_LINK" 1>&2
+                fi
+                NIX_LINK="$NIX_LINK_NEW"
+            fi
         fi
+        echo "NIX_PROFILES=/nix/var/nix/profiles/default $NIX_LINK" >>"$GITHUB_ENV"
+        echo "Nix installation completed successfully"
 
     - name: Setup Nix in PATH
       shell: bash
