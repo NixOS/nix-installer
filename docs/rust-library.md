@@ -1,7 +1,7 @@
 ## As a Rust library
 
 > [!WARNING]
-> Using Determinate Nix Installer as a [Rust] library is still experimental.
+> Using the experimental Nix installer as a [Rust] library is still experimental.
 > This feature is likely to be removed in the future without an advocate.
 > If you're using this, please let us know and we can provide a path to stabilization.
 
@@ -28,13 +28,6 @@ Then it's possible to review the [documentation]:
 
 ```shell
 cargo doc --open -p nix-installer
-```
-
-Documentation is also available via `nix build`:
-
-```shell
-nix build github:DeterminateSystems/nix-installer#nix-installer.doc
-firefox result-doc/nix-installer/index.html
 ```
 
 [clap]: https://clap.rs

@@ -15,12 +15,6 @@ use url::Url;
 
 use self::subcommand::NixInstallerSubcommand;
 
-const FAIL_PKG_SUGGEST: &str = "\
-The Determinate Nix Installer failed.
-
-Try our macOS-native package instead, which can handle almost anything: https://dtr.mn/determinate-nix\
-";
-
 #[async_trait::async_trait]
 pub trait CommandExecute {
     async fn execute(self) -> eyre::Result<ExitCode>;
@@ -102,8 +96,6 @@ impl CommandExecute for NixInstallerCli {
                     eprintln!("{err:?}\n");
                 }
 
-                tracing::warn!("{}\n", FAIL_PKG_SUGGEST.trim());
-
                 return Ok(ExitCode::FAILURE);
             }
         }
@@ -177,7 +169,7 @@ pub fn ensure_root() -> eyre::Result<()> {
                 "HTTP_PROXY" | "http_proxy" | "HTTPS_PROXY" | "https_proxy" => true,
                 // Our own environments
                 key if key.starts_with("NIX_INSTALLER") => true,
-                // Our own environments
+                // Kept for backward compatibility with existing installations
                 key if key.starts_with("DETSYS_") => true,
                 _ => false,
             };

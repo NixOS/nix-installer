@@ -1,4 +1,4 @@
-# An experimental fork of the Determinate Nix Installer, to play with upstreaming.
+# Experimental Nix Installer
 
 Note, this is different from the Determinate Nix Installer, available at https://github.com/DeterminateSystems/nix-installer.
 
@@ -53,7 +53,7 @@ This would install Nix on an `x86_64-linux` system but you can replace that with
 
 ### Planners
 
-Determinate Nix Installer installs Nix by following a _plan_ made by a _planner_.
+The experimental Nix installer installs Nix by following a _plan_ made by a _planner_.
 To review the available planners:
 
 ```shell
@@ -97,7 +97,7 @@ Alternatively, you can [uninstall](#uninstalling) and [reinstall](#install-nix) 
 
 ### Uninstalling
 
-You can remove Nix installed by Determinate Nix Installer by running:
+You can remove Nix installed by the experimental Nix installer by running:
 
 ```shell
 /nix/nix-installer uninstall
@@ -296,12 +296,12 @@ See [this guide](./docs/building.md) for instructions on building and distributi
 
 ## As a Rust library
 
-The Determinate Nix Installer is available as a standard [Rust] library.
+The experimental Nix installer is available as a standard [Rust] library.
 See [this guide](./docs/rust-library.md) for instructions on using the library in your own Rust code.
 
 ## Accessing other versions
 
-You can pin to a specific version of Determinate Nix Installer by modifying the download URL.
+You can pin to a specific version of the experimental Nix installer by modifying the download URL.
 Here's an example:
 
 ```shell
@@ -339,7 +339,7 @@ Differing from the upstream [Nix][upstream-nix] installer scripts:
 
 ## Installer settings
 
-Determinate Nix Installer provides a variety of configuration settings, some [general](#general-settings) and some on a per-command basis.
+The experimental Nix installer provides a variety of configuration settings, some [general](#general-settings) and some on a per-command basis.
 All settings are available via flags or via `NIX_INSTALLER_*` environment variables.
 
 ### General settings
@@ -414,31 +414,20 @@ nix-installer uninstall /path/to/receipt.json
 `nix-installer self-test` only takes [general settings](#general-settings).
 
 [actions]: https://github.com/features/actions
-[cache]: https://docs.determinate.systems/flakehub/cache
-[det-nix]: https://docs.determinate.systems/determinate-nix
-[determinate]: https://docs.determinate.systems
-[determinate-flake]: https://github.com/DeterminateSystems/determinate
-[detsys]: https://determinate.systems
 [docker]: https://docker.com
 [enabling-systemd]: https://devblogs.microsoft.com/commandline/systemd-support-is-now-available-in-wsl/#how-can-you-get-systemd-on-your-machine
-[flakehub]: https://flakehub.com
 [flakes]: https://zero-to-nix.com/concepts/flakes
 [forked-installer]: https://github.com/nixos/experimental-nix-installer
 [gitlab]: https://gitlab.com
 [gitlab-ci]: https://docs.gitlab.com/ee/ci
-[macos-upgrades]: https://determinate.systems/posts/nix-survival-mode-on-macos/
 [nix]: https://nixos.org
-[nix-installer-action]: https://github.com/DeterminateSystems/nix-installer-action
 [nixgl]: https://github.com/guibou/nixGL
 [nixos]: https://zero-to-nix.com/concepts/nixos
 [openssl]: https://openssl.org
 [podman]: https://podman.io
-[privacy]: https://determinate.systems/policies/privacy
-[private-flakes]: https://docs.determinate.systems/flakehub/private-flakes
 [releases]: https://github.com/NixOS/experimental-nix-installer/releases
 [rust]: https://rust-lang.org
 [selinux]: https://selinuxproject.org
-[semver]: https://docs.determinate.systems/flakehub/concepts/semver
 [steam-deck]: https://store.steampowered.com/steamdeck
 [systemd]: https://systemd.io
 [upstream-nix]: https://github.com/NixOS/nix
