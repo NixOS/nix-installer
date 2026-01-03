@@ -14,9 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Nix
-        uses: ./.github/actions/install-nix-action
+        uses: ./
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v15
         with:
-          cachix-authtoken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+          name: nix-installer
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
       - name: Check flake
         uses: DeterminateSystems/flake-checker-action@main
       - name: Update flake.lock

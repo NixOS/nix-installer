@@ -128,6 +128,7 @@
               check.check-semver
               check.check-clippy
               editorconfig-checker
+              act
             ]
             ++ lib.optionals (pkgs.stdenv.isDarwin) (with pkgs; [
               libiconv
@@ -181,6 +182,17 @@
         } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.isDarwin) {
           default = pkgs.nix-installer;
         });
+
+      apps = forAllSystems ({ pkgs, ... }: {
+        test-action = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "test-action" ''
+            set -e
+            echo "Testing GitHub Action with act..."
+            ${pkgs.act}/bin/act -W .github/workflows/act-test.yml -j test-release --pull=false
+          '');
+        };
+      });
 
       hydraJobs = {
         build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);

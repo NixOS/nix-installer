@@ -1,0 +1,33 @@
+name: Act Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-release:
+    name: Test Release Mode
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix from latest release
+        uses: ./
+        with:
+          no-init: true
+          add-channel: true
+
+      - name: Verify Nix installation
+        run: |
+          echo "Checking Nix is available..."
+          which nix
+          nix --version
+
+          echo "Testing nix run command..."
+          nix run nixpkgs#hello
+
+          echo "Testing nix-env install..."
+          nix-env --install hello
+          hello
+          nix-env --uninstall hello
