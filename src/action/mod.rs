@@ -382,8 +382,6 @@ pub enum ActionErrorKind {
         }
     }).collect::<Vec<_>>().join("\n"))]
     Multiple(Vec<ActionErrorKind>),
-    #[error("Determinate Nix planned, but this installer is not equipped to install it.")]
-    DeterminateNixUnavailable,
     /// The path already exists with different content that expected
     #[error(
         "`{0}` exists with different content than planned, consider removing it with `rm {0}`"
@@ -556,7 +554,7 @@ pub enum ActionErrorKind {
     MissingRemoveUserFromGroupCommand,
     #[error("\
         Could not detect systemd; you may be able to get up and running without systemd with `nix-installer install linux --init none`.\n\
-        See https://github.com/NixOS/experimental-nix-installer#without-systemd-linux-only for documentation on usage and drawbacks.\
+        See https://github.com/NixOS/nix-installer#without-systemd-linux-only for documentation on usage and drawbacks.\
         ")]
     SystemdMissing,
     #[error("`{command}` failed, message: {message}")]

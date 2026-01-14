@@ -35,8 +35,8 @@ for artifact in $(find artifacts/ -type f); do
   cp "$artifact" "$GIT_ISH"/
 done
 
-sed -i "s@https://install.determinate.systems/nix@$DEST_INSTALL_URL@" "$DEST/nix-installer.sh"
-sed -i "s@https://install.determinate.systems/nix@https://install.determinate.systems/nix/rev/$GIT_ISH@" "$GIT_ISH/nix-installer.sh"
+sed -i "s@https://artifacts.nixos.org/nix-installer@$DEST_INSTALL_URL@" "$DEST/nix-installer.sh"
+sed -i "s@https://artifacts.nixos.org/nix-installer@https://artifacts.nixos.org/nix-installer/rev/$GIT_ISH@" "$GIT_ISH/nix-installer.sh"
 
 if is_tag; then
   cp "$DEST/nix-installer.sh" ./nix-installer.sh

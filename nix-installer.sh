@@ -2,7 +2,7 @@
 # shellcheck shell=dash
 
 # If you need an offline install, or you'd prefer to run the binary directly, head to
-# https://github.com/DeterminateSystems/nix-installer/releases then pick the version and platform
+# https://github.com/NixOS/nix-installer/releases then pick the version and platform
 # most appropriate for your deployment target.
 #
 # This is just a little script that selects and downloads the right `nix-installer`. It does
@@ -30,7 +30,7 @@ is_zsh() {
 set -u
 
 # If NIX_INSTALLER_FORCE_ALLOW_HTTP is unset or empty, default it.
-NIX_INSTALLER_BINARY_ROOT="${NIX_INSTALLER_BINARY_ROOT:-https://github.com/NixOS/experimental-nix-installer/releases/download/$assemble_installer_templated_version}"
+NIX_INSTALLER_BINARY_ROOT="${NIX_INSTALLER_BINARY_ROOT:-https://github.com/NixOS/nix-installer/releases/download/$assemble_installer_templated_version}"
 
 main() {
     downloader --check
