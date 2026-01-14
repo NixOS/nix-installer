@@ -146,6 +146,13 @@
       checks = forAllSystems ({ pkgs, ... }:
         let
           check = import ./nix/check.nix { inherit pkgs; };
+          # Extract version from Cargo.toml
+          cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+          installerVersion = cargoToml.package.version;
+          # Extract major.minor from both versions
+          versionParts = ver: builtins.match "([0-9]+)\\.([0-9]+).*" ver;
+          installerMajorMinor = versionParts installerVersion;
+          nixMajorMinor = versionParts nix_version;
         in
         {
           check-rustfmt = pkgs.runCommand "check-rustfmt" { buildInputs = [ check.check-rustfmt ]; } ''
@@ -168,6 +175,13 @@
             check-editorconfig
             touch $out
           '';
+          check-version-consistency =
+            assert installerMajorMinor == nixMajorMinor ||
+              throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nix_version} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
+            pkgs.runCommand "check-version-consistency" { } ''
+              echo "Version consistency check passed: installer ${installerVersion} matches Nix ${nix_version}"
+              touch $out
+            '';
         });
 
       packages = forAllSystems ({ system, pkgs, ... }:

@@ -1,5 +1,5 @@
 {
-  "version": "3.11.3",
+  "version": "2.33.0",
   "actions": [
     {
       "action": {
@@ -21,7 +21,7 @@
           "action": {
             "action_name": "fetch_and_unpack_nix",
             "url_or_path": {
-              "Url": "https://releases.nixos.org/nix/nix-2.32.0/nix-2.32.0-x86_64-linux.tar.xz"
+              "Url": "https://releases.nixos.org/nix/nix-2.33.0/nix-2.33.0-x86_64-linux.tar.xz"
             },
             "dest": "/nix/temp-install-dir",
             "proxy": null,
