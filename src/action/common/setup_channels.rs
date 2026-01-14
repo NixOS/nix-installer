@@ -24,11 +24,27 @@ pub struct SetupChannels {
 }
 
 impl SetupChannels {
+    fn get_root_home() -> Result<PathBuf, SetupChannelsError> {
+        // Use nix::unistd to get the actual root user's home, not $HOME env var
+        // This avoids issues where sudo preserves HOME on some platforms (macOS)
+        use nix::unistd::{Uid, User};
+
+        if Uid::effective().is_root() {
+            User::from_uid(Uid::from_raw(0))
+                .ok()
+                .flatten()
+                .map(|user| user.dir)
+                .ok_or(SetupChannelsError::NoRootHome)
+        } else {
+            dirs::home_dir().ok_or(SetupChannelsError::NoRootHome)
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
         let create_file = CreateFile::plan(
-            dirs::home_dir()
-                .ok_or_else(|| Self::error(SetupChannelsError::NoRootHome))?
+            Self::get_root_home()
+                .map_err(Self::error)?
                 .join(".nix-channels"),
             None,
             None,
@@ -89,10 +105,7 @@ impl Action for SetupChannels {
                 .arg("--update")
                 .arg("nixpkgs")
                 .stdin(std::process::Stdio::null())
-                .env(
-                    "HOME",
-                    dirs::home_dir().ok_or_else(|| Self::error(SetupChannelsError::NoRootHome))?,
-                )
+                .env("HOME", Self::get_root_home().map_err(Self::error)?)
                 .env(
                     "NIX_SSL_CERT_FILE",
                     nss_ca_cert_pkg.join("etc/ssl/certs/ca-bundle.crt"),

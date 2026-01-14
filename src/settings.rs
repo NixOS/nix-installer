@@ -169,8 +169,8 @@ pub struct CommonSettings {
     #[cfg_attr(
         feature = "cli",
         clap(
-            action(ArgAction::SetFalse),
-            default_value = "true",
+            action(ArgAction::SetTrue),
+            default_value = "false",
             global = true,
             env = "NIX_INSTALLER_ADD_CHANNEL",
             long("add-channel"),
@@ -241,7 +241,7 @@ impl CommonSettings {
             force: false,
             skip_nix_conf: false,
             ssl_cert_file: Default::default(),
-            add_channel: true,
+            add_channel: false,
         })
     }
 
