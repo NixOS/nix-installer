@@ -261,7 +261,18 @@ You can also remove your `$HOME/nix-installer-wsl-tests-temp` folder whenever yo
 > The documentation below describes a process that used to be mostly manual, and is now driven externally.
 > The material below is generally kept up to date for documentation, manual releases, and external use purposes.
 
-This package uses [Semantic Versioning](https://semver.org/). When determining the version number for a new release refer to Semantic Versioning for guidance. You can use the `check-semver` command alias from within the development environment to validate your changes don't break semver.
+## Versioning Scheme
+
+This package follows the Nix project's versioning for major and minor version numbers:
+
+- **Major.Minor**: Matches the Nix version being installed (e.g., `2.33.x` installs Nix 2.33)
+- **Patch**: Revision number for the installer itself (incremented for installer-specific changes)
+
+This means version `2.33.0` is the first release of the installer for Nix 2.33, `2.33.1` would be a bugfix release, etc.
+
+The `check-version-consistency` check in `nix flake check` verifies that the installer version's major.minor matches the Nix version in flake.nix.
+
+You can use the `check-semver` command alias from within the development environment to validate your changes don't break semver.
 
 To cut a release, run the GitHub Actions workflow `propose-release.yml`.
 Specify these parameters:
