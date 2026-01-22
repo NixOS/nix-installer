@@ -35,7 +35,7 @@ tokio = { version = "1.49.0", default-features = false, features = ["time", "io-
 tracing = { version = "0.1.36", default-features = false, features = [ "std", "attributes" ] }
 tracing-error = { version = "0.2.0", default-features = false, optional = true, features = ["traced-error"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = [ "std", "registry", "fmt", "json", "ansi", "env-filter" ], optional = true }
-url = { version = "2.3.1", default-features = false, features = ["serde"] }
+url = { version = "2.5.8", default-features = false, features = ["serde"] }
 xz2 = { version = "0.1.7", default-features = false, features = ["static", "tokio"] }
 plist = { version = "=1.8.0", default-features = false, features = [ "serde" ]}
 dirs = { version = "5.0.0", default-features = false }
