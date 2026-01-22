@@ -47,7 +47,7 @@ uuid = { version = "1.2.2", features = ["serde"] }
 os-release = { version = "0.1.0", default-features = false }
 strum = { version = "0.27.2", features = ["derive"] }
 nix-config-parser = { version = "0.2", features = ["serde"] }
-which = "6.0.0"
+which = "8.0.0"
 sysctl = "0.7.1"
 walkdir = "2.3.3"
 indexmap = { version = "2.13.0", features = ["serde"] }
