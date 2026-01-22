@@ -298,8 +298,8 @@ impl Action for CreateOrMergeNixConfig {
         let parent_dir = self.path.parent().expect("File must be in a directory");
         let mut temp_file_path = parent_dir.to_owned();
         {
-            let mut rng = rand::thread_rng();
-            temp_file_path.push(format!("nix-installer-tmp.{}", rng.gen::<u32>()));
+            let mut rng = rand::rng();
+            temp_file_path.push(format!("nix-installer-tmp.{}", rng.random::<u32>()));
         }
         let mut temp_file = OpenOptions::new()
             .create(true)
