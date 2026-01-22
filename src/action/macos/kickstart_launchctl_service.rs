@@ -128,7 +128,10 @@ impl Action for KickstartLaunchctlService {
             Some(3) | Some(0) | None => (),
             _ => {
                 return Err(Self::error(ActionErrorKind::Custom(Box::new(
-                    KickstartLaunchctlServiceError::CannotStopService(command_str, output),
+                    KickstartLaunchctlServiceError::CannotStopService {
+                        command: command_str,
+                        output,
+                    },
                 ))))
             },
         }
@@ -139,6 +142,6 @@ impl Action for KickstartLaunchctlService {
 
 #[derive(Debug, thiserror::Error)]
 pub enum KickstartLaunchctlServiceError {
-    #[error("Command `{0}` failed, stderr: {}", String::from_utf8(.1.stderr.clone()).unwrap_or_else(|_e| String::from("<Non-UTF-8>")))]
-    CannotStopService(String, Output),
+    #[error("Command `{command}` failed, stderr: {stderr}", stderr = String::from_utf8(output.stderr.clone()).unwrap_or_else(|_e| String::from("<Non-UTF-8>")))]
+    CannotStopService { command: String, output: Output },
 }
