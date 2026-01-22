@@ -41,7 +41,6 @@ impl std::fmt::Display for InitSystem {
 Settings which only apply to certain [`Planner`](crate::planner::Planner)s should be located in the planner.
 
 */
-#[serde_with::serde_as]
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[cfg_attr(feature = "cli", derive(clap::Parser))]
 pub struct CommonSettings {
@@ -328,7 +327,6 @@ async fn linux_detect_systemd_started() -> bool {
     started
 }
 
-#[serde_with::serde_as]
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[cfg_attr(feature = "cli", derive(clap::Parser))]
 pub struct InitSettings {
