@@ -161,7 +161,7 @@ impl Planner for MyPlanner {
     async fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
-            OperatingSystem::MacOSX { .. } | OperatingSystem::Darwin => Ok(()),
+            OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => Ok(()),
             host_os => Err(PlannerError::IncompatibleOperatingSystem {
                 planner: self.typetag_name(),
                 host_os,
