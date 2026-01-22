@@ -31,7 +31,7 @@ jobs:
         run: nix run --inputs-from .# nixpkgs#python3 -- scripts/bump_nix_version.py
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "Bump Nix version"
           title: "Bump Nix version"
