@@ -581,9 +581,9 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 
 [[package]]
 name = "heck"
@@ -870,12 +870,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.4"
+version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
+checksum = "7714e70437a7dc3ac8eb7e6f8df75fd8eb422675fc7678aff7364301092b1017"
 dependencies = [
  "equivalent",
- "hashbrown 0.16.0",
+ "hashbrown 0.16.1",
  "serde",
  "serde_core",
 ]
@@ -1079,7 +1079,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "383d96c6f2c44fc706e7a523743434465d62db109b7c8364b642f35853475d67"
 dependencies = [
- "indexmap 2.11.4",
+ "indexmap 2.13.0",
  "serde",
  "thiserror 1.0.69",
 ]
@@ -1096,7 +1096,7 @@ dependencies = [
  "dyn-clone",
  "eyre",
  "glob",
- "indexmap 2.11.4",
+ "indexmap 2.13.0",
  "nix",
  "nix-config-parser",
  "once_cell",
@@ -1257,7 +1257,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "740ebea15c5d1428f910cd1a5f52cebf8d25006245ed8ade92702f4943d91e07"
 dependencies = [
  "base64",
- "indexmap 2.11.4",
+ "indexmap 2.13.0",
  "quick-xml",
  "serde",
  "time",
@@ -1789,7 +1789,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 1.9.3",
- "indexmap 2.11.4",
+ "indexmap 2.13.0",
  "schemars 0.9.0",
  "schemars 1.0.4",
  "serde_core",

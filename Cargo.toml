@@ -50,7 +50,7 @@ nix-config-parser = { version = "0.2", features = ["serde"] }
 which = "6.0.0"
 sysctl = "0.7.1"
 walkdir = "2.3.3"
-indexmap = { version = "2.0.2", features = ["serde"] }
+indexmap = { version = "2.13.0", features = ["serde"] }
 once_cell = "1.19.0"
 tempfile = "3.24.0"
 
