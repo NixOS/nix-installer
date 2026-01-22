@@ -2,16 +2,11 @@
   description = "Experimental Nix Installer";
 
   inputs = {
-    # can track upstream versioning with
-    # git show $most_recently_merged_commit:flake.lock | jq '.nodes[.nodes.root.inputs.nixpkgs].locked.rev'
-    nixpkgs.url = "github:NixOS/nixpkgs/d98ce345cdab58477ca61855540999c86577d19d";
+    nixpkgs.follows = "nix/nixpkgs";
 
     crane.url = "github:ipetkov/crane/v0.20.0";
 
-    nix = {
-      url = "github:NixOS/nix/2.33.1";
-      # Omitting `inputs.nixpkgs.follows = "nixpkgs";` on purpose
-    };
+    nix.url = "github:NixOS/nix/2.33.1";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
   };
