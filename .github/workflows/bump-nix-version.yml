@@ -1,0 +1,40 @@
+name: Bump Nix Version
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 06:00 UTC
+    # FIXME, we still need a github app token here, if we also want to trigger ci from this type of PRs
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: ./
+
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: nix-installer
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
+      - name: Bump Nix version
+        run: nix run --inputs-from .# nixpkgs#python3 -- scripts/bump_nix_version.py
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "Bump Nix version"
+          title: "Bump Nix version"
+          body: "Automated Nix version bump"
+          branch: bump-nix-version
+          delete-branch: true
