@@ -23,6 +23,6 @@ jobs:
         authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
     - name: Create draft release
       # The script also depends on gh and git but those are both pre-installed on the runner
-      run: nix run --inputs-from .# nixpkgs#python3 -- assemble_installer.py "${{ github.event.inputs.testing_hydra_eval_id }}"
+      run: nix run --inputs-from .# nixpkgs#python3 -- scripts/assemble_installer.py "${{ github.event.inputs.testing_hydra_eval_id }}"
       env:
         GH_TOKEN: ${{ github.token }}
