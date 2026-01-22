@@ -131,7 +131,7 @@ jobs:
 
       - name: Download artifact
         id: download-installer
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: nix-installer-${{ matrix.system }}
           path: install-root/
@@ -278,7 +278,7 @@ jobs:
 
       - name: Restore Github cache artifacts
         id: download-installer
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: nix-installer-${{ env.SYSTEM }}
           path: install-root/
