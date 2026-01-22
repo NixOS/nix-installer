@@ -1,65 +1,27 @@
-use std::io::Read;
+use std::io::Cursor;
 use std::path::PathBuf;
 
-use bytes::Bytes;
 use tracing::{span, Span};
-use url::Url;
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
-    parse_ssl_cert,
-    settings::UrlOrPath,
+    settings::{EMBEDDED_NIX_TARBALL, NIX_VERSION},
     util::OnMissing,
 };
 
 /**
-Fetch a URL to the given path
+Unpack the embedded Nix tarball to the destination directory
 */
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "action_name", rename = "fetch_and_unpack_nix")]
 pub struct FetchAndUnpackNix {
-    url_or_path: UrlOrPath,
     dest: PathBuf,
-    proxy: Option<Url>,
-    ssl_cert_file: Option<PathBuf>,
 }
 
 impl FetchAndUnpackNix {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn plan(
-        url_or_path: UrlOrPath,
-        dest: PathBuf,
-        proxy: Option<Url>,
-        ssl_cert_file: Option<PathBuf>,
-    ) -> Result<StatefulAction<Self>, ActionError> {
-        // TODO(@hoverbear): Check URL exists?
-        // TODO(@hoverbear): Check tempdir exists
-
-        if let UrlOrPath::Url(url) = &url_or_path {
-            match url.scheme() {
-                "https" | "http" | "file" => (),
-                _ => return Err(Self::error(ActionErrorKind::UnknownUrlScheme)),
-            }
-        }
-
-        if let Some(proxy) = &proxy {
-            match proxy.scheme() {
-                "https" | "http" | "socks5" => (),
-                _ => return Err(Self::error(FetchUrlError::UnknownProxyScheme)),
-            };
-        }
-
-        if let Some(ssl_cert_file) = &ssl_cert_file {
-            parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
-        }
-
-        Ok(Self {
-            url_or_path,
-            dest,
-            proxy,
-            ssl_cert_file,
-        }
-        .into())
+    pub fn plan(dest: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
+        Ok(Self { dest }.into())
     }
 }
 
@@ -68,29 +30,21 @@ impl Action for FetchAndUnpackNix {
     fn action_tag() -> ActionTag {
         ActionTag("fetch_and_unpack_nix")
     }
+
     fn tracing_synopsis(&self) -> String {
-        format!("Fetch `{}` to `{}`", self.url_or_path, self.dest.display())
+        format!(
+            "Unpack embedded Nix {} to `{}`",
+            NIX_VERSION.trim(),
+            self.dest.display()
+        )
     }
 
     fn tracing_span(&self) -> Span {
-        let span = span!(
+        span!(
             tracing::Level::DEBUG,
             "fetch_and_unpack_nix",
-            url_or_path = tracing::field::display(&self.url_or_path),
-            proxy = tracing::field::Empty,
-            ssl_cert_file = tracing::field::Empty,
             dest = tracing::field::display(self.dest.display()),
-        );
-        if let Some(proxy) = &self.proxy {
-            span.record("proxy", tracing::field::display(&proxy));
-        }
-        if let Some(ssl_cert_file) = &self.ssl_cert_file {
-            span.record(
-                "ssl_cert_file",
-                tracing::field::display(&ssl_cert_file.display()),
-            );
-        }
-        span
+        )
     }
 
     fn execute_description(&self) -> Vec<ActionDescription> {
@@ -99,94 +53,27 @@ impl Action for FetchAndUnpackNix {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        let bytes = match &self.url_or_path {
-            UrlOrPath::Url(url) => {
-                let bytes = match url.scheme() {
-                    "https" | "http" => {
-                        let mut agent_builder = ureq::AgentBuilder::new();
+        tracing::trace!("Unpacking embedded tar.zst");
 
-                        if let Some(proxy) = &self.proxy {
-                            let proxy = ureq::Proxy::new(proxy.as_str())
-                                .map_err(|e| ActionErrorKind::Ureq(Box::new(e.into())))
-                                .map_err(Self::error)?;
-                            agent_builder = agent_builder.proxy(proxy);
-                        }
-
-                        if let Some(ssl_cert_file) = &self.ssl_cert_file {
-                            let cert = parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
-                            agent_builder = agent_builder.tls_config(std::sync::Arc::new(
-                                rustls::ClientConfig::builder()
-                                    .with_root_certificates({
-                                        let mut roots = rustls::RootCertStore::empty();
-                                        // Load system root certificates first
-                                        for native_cert in
-                                            rustls_native_certs::load_native_certs().certs
-                                        {
-                                            roots.add(native_cert).ok();
-                                        }
-                                        // Add the custom certificate
-                                        roots.add(cert).map_err(|e| {
-                                            Self::error(ActionErrorKind::Custom(Box::new(e)))
-                                        })?;
-                                        roots
-                                    })
-                                    .with_no_client_auth(),
-                            ));
-                        }
-
-                        let agent = agent_builder.build();
-                        let response = agent
-                            .get(url.as_str())
-                            .call()
-                            .map_err(|e| ActionErrorKind::Ureq(Box::new(e)))
-                            .map_err(Self::error)?;
-
-                        let mut buf = Vec::new();
-                        response
-                            .into_reader()
-                            .read_to_end(&mut buf)
-                            .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.as_str()), e))
-                            .map_err(Self::error)?;
-                        Bytes::from(buf)
-                    },
-                    "file" => {
-                        let buf = std::fs::read(url.path())
-                            .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.path()), e))
-                            .map_err(Self::error)?;
-                        Bytes::from(buf)
-                    },
-                    _ => return Err(Self::error(ActionErrorKind::UnknownUrlScheme)),
-                };
-                bytes
-            },
-            UrlOrPath::Path(path) => {
-                let buf = std::fs::read(path)
-                    .map_err(|e| ActionErrorKind::Read(path.clone(), e))
-                    .map_err(Self::error)?;
-                Bytes::from(buf)
-            },
-        };
-
-        // TODO(@Hoverbear): Pick directory
-        tracing::trace!("Unpacking tar.xz");
-
-        // NOTE(cole-h): If the destination exists (because maybe a previous install failed), we
-        // want to remove it so that tar doesn't complain with:
-        //     trying to unpack outside of destination path: /nix/temp-install-dir
+        // Remove destination if it exists (from a previous failed install)
         if self.dest.exists() {
             crate::util::remove_dir_all(&self.dest, OnMissing::Ignore)
                 .map_err(|e| Self::error(ActionErrorKind::Remove(self.dest.clone(), e)))?;
         }
 
-        let decoder = xz2::read::XzDecoder::new(std::io::Cursor::new(bytes));
-        let mut archive = tar::Archive::new(decoder);
+        // Decompress zstd
+        let zstd_reader = Cursor::new(EMBEDDED_NIX_TARBALL);
+        let tar_data =
+            zstd::decode_all(zstd_reader).map_err(|e| Self::error(UnpackError::Zstd(e)))?;
+
+        // Unpack tar
+        let mut archive = tar::Archive::new(Cursor::new(tar_data));
         archive.set_preserve_permissions(true);
         archive.set_preserve_mtime(true);
         archive.set_unpack_xattrs(true);
         archive
             .unpack(&self.dest)
-            .map_err(FetchUrlError::Unarchive)
-            .map_err(Self::error)?;
+            .map_err(|e| Self::error(UnpackError::Unarchive(e)))?;
 
         Ok(())
     }
@@ -203,15 +90,15 @@ impl Action for FetchAndUnpackNix {
 
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
-pub enum FetchUrlError {
-    #[error("Unarchiving error")]
+pub enum UnpackError {
+    #[error("Zstd decompression error")]
+    Zstd(#[source] std::io::Error),
+    #[error("Tar extraction error")]
     Unarchive(#[source] std::io::Error),
-    #[error("Unknown proxy scheme, `https://`, `socks5://`, and `http://` supported")]
-    UnknownProxyScheme,
 }
 
-impl From<FetchUrlError> for ActionErrorKind {
-    fn from(val: FetchUrlError) -> Self {
+impl From<UnpackError> for ActionErrorKind {
+    fn from(val: UnpackError) -> Self {
         ActionErrorKind::Custom(Box::new(val))
     }
 }

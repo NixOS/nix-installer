@@ -80,7 +80,7 @@ pub mod self_test;
 pub mod settings;
 mod util;
 
-use std::{ffi::OsStr, path::Path, process::Output};
+use std::{ffi::OsStr, process::Output};
 
 pub use error::NixInstallerError;
 pub use plan::InstallPlan;
@@ -116,27 +116,4 @@ fn execute_command(command: &mut Command) -> Result<Output, ActionErrorKind> {
 fn set_env(k: impl AsRef<OsStr>, v: impl AsRef<OsStr>) {
     tracing::trace!("Setting env");
     std::env::set_var(k.as_ref(), v.as_ref());
-}
-
-fn parse_ssl_cert(
-    ssl_cert_file: &Path,
-) -> Result<rustls::pki_types::CertificateDer<'static>, CertificateError> {
-    let cert_buf = std::fs::read(ssl_cert_file)
-        .map_err(|e| CertificateError::Read(ssl_cert_file.to_path_buf(), e))?;
-
-    // Try PEM format first
-    if let Ok(pem) = pem::parse(&cert_buf) {
-        return Ok(rustls::pki_types::CertificateDer::from(pem.into_contents()));
-    }
-
-    // Try DER format
-    Ok(rustls::pki_types::CertificateDer::from(cert_buf))
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CertificateError {
-    #[error("Read path `{0}`")]
-    Read(std::path::PathBuf, #[source] std::io::Error),
-    #[error("Unknown certificate format, `der` and `pem` supported")]
-    UnknownCertFormat,
 }

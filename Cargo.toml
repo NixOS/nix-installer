@@ -16,7 +16,6 @@ name = "nix-installer"
 required-features = [ "cli" ]
 
 [dependencies]
-bytes = { version = "1.11.0", default-features = false, features = ["std", "serde"] }
 clap = { version = "4", features = ["std", "color", "usage", "help", "error-context", "suggestions", "derive", "env"], optional = true }
 color-eyre = { version = "0.6.2", default-features = false, features = [ "track-caller", "issue-url", "tracing-error", "capture-spantrace", "color-spantrace" ], optional = true }
 ctrlc = { version = "3.4", features = ["termination"] }
@@ -32,12 +31,8 @@ thiserror = { version = "2.0.18", default-features = false }
 tracing = { version = "0.1.36", default-features = false, features = [ "std", "attributes" ] }
 tracing-error = { version = "0.2.0", default-features = false, optional = true, features = ["traced-error"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = [ "std", "registry", "fmt", "json", "ansi", "env-filter" ], optional = true }
-ureq = { version = "2.10", default-features = false, features = ["tls", "socks-proxy"] }
-rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
-rustls-native-certs = "0.8"
-pem = "3.0"
 url = { version = "2.5.8", default-features = false, features = ["serde"] }
-xz2 = { version = "0.1.7", default-features = false, features = ["static"] }
+zstd = { version = "0.13", default-features = false }
 plist = { version = "=1.8.0", default-features = false, features = [ "serde" ]}
 dirs = { version = "6.0.0", default-features = false }
 typetag = { version = "0.2.17", default-features = false }

@@ -1,5 +1,4 @@
 use tracing::{span, Span};
-use url::Url;
 
 use crate::action::base::create_or_merge_nix_config::{
     CreateOrMergeNixConfigError, EXPERIMENTAL_FEATURES_CONF_NAME,
@@ -9,7 +8,6 @@ use crate::action::base::{CreateDirectory, CreateOrMergeNixConfig};
 use crate::action::{
     Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
 };
-use crate::parse_ssl_cert;
 use crate::settings::UrlOrPathOrString;
 use std::path::PathBuf;
 
@@ -42,12 +40,11 @@ impl PlaceNixConfiguration {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn plan(
         nix_build_group_name: String,
-        proxy: Option<Url>,
         ssl_cert_file: Option<PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
         force: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
-        let extra_conf = Self::parse_extra_conf(proxy, ssl_cert_file.as_ref(), extra_conf)?;
+        let extra_conf = Self::parse_extra_conf(extra_conf)?;
 
         let configured_ssl_cert_file = ssl_cert_file;
 
@@ -147,59 +144,20 @@ impl PlaceNixConfiguration {
     }
 
     fn parse_extra_conf(
-        proxy: Option<Url>,
-        ssl_cert_file: Option<&PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let mut extra_conf_text = vec![];
         for extra in extra_conf {
             let buf = match &extra {
                 UrlOrPathOrString::Url(url) => match url.scheme() {
-                    "https" | "http" => {
-                        use std::io::Read;
-                        let mut agent_builder = ureq::AgentBuilder::new();
-
-                        if let Some(proxy) = &proxy {
-                            let proxy = ureq::Proxy::new(proxy.as_str())
-                                .map_err(|e| ActionErrorKind::Ureq(Box::new(e.into())))
-                                .map_err(Self::error)?;
-                            agent_builder = agent_builder.proxy(proxy);
-                        }
-
-                        if let Some(ssl_cert_file) = &ssl_cert_file {
-                            let cert = parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
-                            agent_builder = agent_builder.tls_config(std::sync::Arc::new(
-                                rustls::ClientConfig::builder()
-                                    .with_root_certificates({
-                                        let mut roots = rustls::RootCertStore::empty();
-                                        roots.add(cert).map_err(|e| {
-                                            Self::error(ActionErrorKind::Custom(Box::new(e)))
-                                        })?;
-                                        roots
-                                    })
-                                    .with_no_client_auth(),
-                            ));
-                        }
-
-                        let agent = agent_builder.build();
-                        let response = agent
-                            .get(url.as_str())
-                            .call()
-                            .map_err(|e| ActionErrorKind::Ureq(Box::new(e)))
-                            .map_err(Self::error)?;
-
-                        let mut buf = String::new();
-                        response
-                            .into_reader()
-                            .read_to_string(&mut buf)
-                            .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.as_str()), e))
-                            .map_err(Self::error)?;
-                        buf
-                    },
                     "file" => std::fs::read_to_string(url.path())
                         .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.path()), e))
                         .map_err(Self::error)?,
-                    _ => return Err(Self::error(ActionErrorKind::UnknownUrlScheme)),
+                    _ => {
+                        return Err(Self::error(ActionErrorKind::Custom(Box::new(
+                            PlaceNixConfigurationError::HttpUrlNotSupported(url.to_string()),
+                        ))))
+                    },
                 },
                 UrlOrPathOrString::Path(path) => std::fs::read_to_string(path)
                     .map_err(|e| ActionErrorKind::Read(PathBuf::from(path), e))
@@ -356,20 +314,31 @@ impl Action for PlaceNixConfiguration {
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum PlaceNixConfigurationError {
+    #[error(
+        "HTTP/HTTPS URLs are not supported for extra-conf; use a local file path instead: {0}"
+    )]
+    HttpUrlNotSupported(String),
+}
+
+impl From<PlaceNixConfigurationError> for ActionErrorKind {
+    fn from(val: PlaceNixConfigurationError) -> Self {
+        ActionErrorKind::Custom(Box::new(val))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn extra_trusted_cache() -> eyre::Result<()> {
-        let extra_conf = PlaceNixConfiguration::parse_extra_conf(
-            None,
-            None,
-            vec![
-                UrlOrPathOrString::String(String::from("extra-trusted-substituters = barfoo")),
-                UrlOrPathOrString::String(String::from("extra-trusted-public-keys = foobar")),
-            ],
-        )?;
+        let extra_conf = PlaceNixConfiguration::parse_extra_conf(vec![
+            UrlOrPathOrString::String(String::from("extra-trusted-substituters = barfoo")),
+            UrlOrPathOrString::String(String::from("extra-trusted-public-keys = foobar")),
+        ])?;
 
         let nix_config =
             PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
@@ -401,13 +370,9 @@ mod tests {
         let nix_conf_path = nix_conf_dir.path().join("nix.conf");
         let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
 
-        let extra_conf = PlaceNixConfiguration::parse_extra_conf(
-            None,
-            None,
-            vec![UrlOrPathOrString::String(format!(
-                "{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"
-            ))],
-        )?;
+        let extra_conf = PlaceNixConfiguration::parse_extra_conf(vec![UrlOrPathOrString::String(
+            format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
+        )])?;
 
         let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None)?;
         let custom_nix_config =
@@ -481,13 +446,9 @@ mod tests {
         let nix_conf_path = nix_conf_dir.path().join("nix.conf");
         let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
 
-        let extra_conf = PlaceNixConfiguration::parse_extra_conf(
-            None,
-            None,
-            vec![UrlOrPathOrString::String(String::from(
-                "trusted-users = bob alice",
-            ))],
-        )?;
+        let extra_conf = PlaceNixConfiguration::parse_extra_conf(vec![UrlOrPathOrString::String(
+            String::from("trusted-users = bob alice"),
+        )])?;
 
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
 

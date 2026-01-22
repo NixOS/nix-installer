@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use tracing::{span, Span};
 
 use super::CreateNixTree;
@@ -7,7 +6,7 @@ use crate::{
         base::{FetchAndUnpackNix, MoveUnpackedNix},
         Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
     },
-    settings::{CommonSettings, UrlOrPath, SCRATCH_DIR},
+    settings::{CommonSettings, SCRATCH_DIR},
 };
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
@@ -30,17 +29,7 @@ pub struct ProvisionNix {
 impl ProvisionNix {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn plan(settings: &CommonSettings) -> Result<StatefulAction<Self>, ActionError> {
-        let url_or_path = settings.nix_package_url.clone().unwrap_or_else(|| {
-            UrlOrPath::from_str(crate::settings::NIX_TARBALL_URL)
-                .expect("Fault: the built-in Nix tarball URL does not parse.")
-        });
-
-        let fetch_nix = FetchAndUnpackNix::plan(
-            url_or_path,
-            PathBuf::from(SCRATCH_DIR),
-            settings.proxy.clone(),
-            settings.ssl_cert_file.clone(),
-        )?;
+        let fetch_nix = FetchAndUnpackNix::plan(PathBuf::from(SCRATCH_DIR))?;
 
         let create_nix_tree = CreateNixTree::plan().map_err(Self::error)?;
         let move_unpacked_nix =

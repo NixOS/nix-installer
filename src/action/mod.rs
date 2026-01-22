@@ -196,7 +196,7 @@ pub use stateful::{ActionState, StatefulAction};
 use std::{error::Error, os::unix::process::ExitStatusExt as _, process::Output};
 use tracing::Span;
 
-use crate::{error::HasExpectedErrors, settings::UrlOrPathError, CertificateError};
+use crate::error::HasExpectedErrors;
 
 /// An action which can be reverted or completed, with an action state
 ///
@@ -352,9 +352,6 @@ pub enum ActionErrorKind {
     /// A custom error
     #[error(transparent)]
     Custom(Box<dyn std::error::Error + Send + Sync>),
-    /// An error to do with certificates
-    #[error(transparent)]
-    Certificate(#[from] CertificateError),
     /// A child error
     #[error(transparent)]
     Child(Box<ActionError>),
@@ -547,18 +544,6 @@ pub enum ActionErrorKind {
     SystemdMissing,
     #[error("`{command}` failed, message: {message}")]
     DiskUtilInfoError { command: String, message: String },
-    #[error(transparent)]
-    UrlOrPathError(#[from] UrlOrPathError),
-    #[error("HTTP request error")]
-    Ureq(#[source] Box<ureq::Error>),
-    #[error("Unknown url scheme")]
-    UnknownUrlScheme,
-}
-
-impl From<ureq::Error> for ActionErrorKind {
-    fn from(e: ureq::Error) -> Self {
-        Self::Ureq(Box::new(e))
-    }
 }
 
 impl ActionErrorKind {

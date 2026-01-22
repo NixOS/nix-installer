@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::{
     action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
     execute_command,
+    settings::{NIX_STORE_PATH, NSS_CACERT_STORE_PATH},
 };
 
 use std::process::Command;
@@ -12,15 +13,12 @@ use crate::action::{Action, ActionDescription};
 
 use crate::action::base::CreateFile;
 
-use super::ConfigureNix;
-
 /**
 Setup the default system channel with nixpkgs-unstable.
  */
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct SetupChannels {
     create_file: StatefulAction<CreateFile>,
-    unpacked_path: PathBuf,
 }
 
 impl SetupChannels {
@@ -41,7 +39,7 @@ impl SetupChannels {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         let create_file = CreateFile::plan(
             Self::get_root_home()
                 .map_err(Self::error)?
@@ -52,11 +50,7 @@ impl SetupChannels {
             "https://nixos.org/channels/nixpkgs-unstable nixpkgs\n".to_string(),
             false,
         )?;
-        Ok(Self {
-            create_file,
-            unpacked_path,
-        }
-        .into())
+        Ok(Self { create_file }.into())
     }
 }
 
@@ -70,11 +64,7 @@ impl Action for SetupChannels {
     }
 
     fn tracing_span(&self) -> Span {
-        span!(
-            tracing::Level::DEBUG,
-            "setup_channels",
-            unpacked_path = %self.unpacked_path.display(),
-        )
+        span!(tracing::Level::DEBUG, "setup_channels",)
     }
 
     fn execute_description(&self) -> Vec<ActionDescription> {
@@ -94,7 +84,9 @@ impl Action for SetupChannels {
         // Place channel configuration
         self.create_file.try_execute()?;
 
-        let (nix_pkg, nss_ca_cert_pkg) = ConfigureNix::find_nix_and_ca_cert(&self.unpacked_path)?;
+        let nix_pkg = PathBuf::from(NIX_STORE_PATH.trim());
+        let nss_ca_cert_pkg = PathBuf::from(NSS_CACERT_STORE_PATH.trim());
+
         // Update nixpkgs channel
         execute_command(
             Command::new(nix_pkg.join("bin/nix-channel"))

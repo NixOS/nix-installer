@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::{
-    action::{common::ConfigureNix, ActionError, ActionErrorKind, ActionTag, StatefulAction},
+    action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
     profile::WriteToDefaultProfile,
     set_env,
+    settings::{NIX_STORE_PATH, NIX_VERSION, NSS_CACERT_STORE_PATH},
 };
 
 use tracing::{span, Span};
@@ -51,19 +52,32 @@ impl Action for SetupDefaultProfile {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        let (nix_pkg, nss_ca_cert_pkg) = ConfigureNix::find_nix_and_ca_cert(&self.unpacked_path)?;
-        let found_nix_paths = glob::glob(&format!("{}/nix-*", self.unpacked_path.display()))
+        let nix_pkg = PathBuf::from(NIX_STORE_PATH.trim());
+        let nss_ca_cert_pkg = PathBuf::from(NSS_CACERT_STORE_PATH.trim());
+
+        // Find the unpacked nix directory (nix-VERSION-SYSTEM)
+        let nix_version = NIX_VERSION.trim();
+        let found_nix_paths: Vec<_> = std::fs::read_dir(&self.unpacked_path)
+            .map_err(|e| ActionErrorKind::ReadDir(self.unpacked_path.clone(), e))
             .map_err(Self::error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(Self::error)?;
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("nix-{nix_version}"))
+            })
+            .collect();
+
         if found_nix_paths.len() != 1 {
             return Err(Self::error(ActionErrorKind::MalformedBinaryTarball));
         }
-        let found_nix_path = found_nix_paths.into_iter().next().unwrap();
+        let found_nix_path = found_nix_paths.into_iter().next().unwrap().path();
+
         let reginfo_path = found_nix_path.join(".reginfo");
         let reginfo = std::fs::read(&reginfo_path)
             .map_err(|e| ActionErrorKind::Read(reginfo_path.to_path_buf(), e))
             .map_err(Self::error)?;
+
         let mut load_db_command = Command::new(nix_pkg.join("bin/nix-store"));
         load_db_command.arg("--load-db");
         load_db_command.stdin(std::process::Stdio::piped());
