@@ -13,7 +13,10 @@ pub const SCRATCH_DIR: &str = "/nix/temp-install-dir";
 
 pub const DEFAULT_NIX_BUILD_USER_GROUP_NAME: &str = "nixbld";
 
-pub const NIX_TARBALL_URL: &str = env!("NIX_TARBALL_URL");
+pub const NIX_TARBALL_URL: &str = match option_env!("NIX_TARBALL_URL") {
+    Some(url) => url,
+    None => "",
+};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -183,7 +186,7 @@ pub(crate) fn default_nix_build_user_id_base() -> u32 {
     use target_lexicon::OperatingSystem;
 
     match OperatingSystem::host() {
-        OperatingSystem::MacOSX { .. } | OperatingSystem::Darwin => 350,
+        OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => 350,
         _ => 30_000,
     }
 }
@@ -192,7 +195,7 @@ pub(crate) fn default_nix_build_group_id() -> u32 {
     use target_lexicon::OperatingSystem;
 
     match OperatingSystem::host() {
-        OperatingSystem::MacOSX { .. } | OperatingSystem::Darwin => 350,
+        OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => 350,
         _ => 30_000,
     }
 }
@@ -213,12 +216,12 @@ impl CommonSettings {
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
                 nix_build_user_prefix = "nixbld";
             },
-            (Architecture::X86_64, OperatingSystem::MacOSX { .. })
-            | (Architecture::X86_64, OperatingSystem::Darwin) => {
+            (Architecture::X86_64, OperatingSystem::MacOSX(_))
+            | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
                 nix_build_user_prefix = "_nixbld";
             },
-            (Architecture::Aarch64(_), OperatingSystem::MacOSX { .. })
-            | (Architecture::Aarch64(_), OperatingSystem::Darwin) => {
+            (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
+            | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => {
                 nix_build_user_prefix = "_nixbld";
             },
             _ => {
@@ -370,10 +373,10 @@ impl InitSettings {
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
                 (InitSystem::Systemd, linux_detect_systemd_started().await)
             },
-            (Architecture::X86_64, OperatingSystem::MacOSX { .. })
-            | (Architecture::X86_64, OperatingSystem::Darwin) => (InitSystem::Launchd, true),
-            (Architecture::Aarch64(_), OperatingSystem::MacOSX { .. })
-            | (Architecture::Aarch64(_), OperatingSystem::Darwin) => (InitSystem::Launchd, true),
+            (Architecture::X86_64, OperatingSystem::MacOSX(_))
+            | (Architecture::X86_64, OperatingSystem::Darwin(_)) => (InitSystem::Launchd, true),
+            (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
+            | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => (InitSystem::Launchd, true),
             _ => {
                 return Err(InstallSettingsError::UnsupportedArchitecture(
                     target_lexicon::HOST,
