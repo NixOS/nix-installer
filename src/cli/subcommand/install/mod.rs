@@ -102,7 +102,7 @@ impl CommandExecute for Install {
         };
 
         let uninstall_command = match Path::new("/nix/nix-installer").exists() {
-            true => "/nix/nix-installer uninstall".into(),
+            true => "/nix/nix-installer uninstall",
             false => "curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- uninstall"
         };
 
