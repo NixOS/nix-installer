@@ -1081,7 +1081,6 @@ dependencies = [
  "dyn-clone",
  "eyre",
  "glob",
- "indexmap 2.13.0",
  "nix",
  "nix-config-parser",
  "os-release",
