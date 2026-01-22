@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{stdin, stdout, BufRead, Write};
 
 use eyre::{eyre, WrapErr};
@@ -11,26 +10,12 @@ pub enum PromptChoice {
     Explain,
 }
 
-// Do not try to get clever!
-//
-// Mac is extremely janky if you `curl $URL | sudo sh` and the TTY may not be set up right.
-// The below method was adopted from Rustup at https://github.com/rust-lang/rustup/blob/3331f34c01474bf216c99a1b1706725708833de1/src/cli/term2.rs#L37
 pub(crate) async fn prompt(
     question: impl AsRef<str>,
     default: PromptChoice,
     currently_explaining: bool,
 ) -> eyre::Result<PromptChoice> {
-    let stdout = stdout();
-    let terminfo = term::terminfo::TermInfo::from_env().unwrap_or_else(|_| {
-        tracing::warn!("Couldn't find terminfo, using empty fallback terminfo");
-        term::terminfo::TermInfo {
-            names: vec![],
-            bools: HashMap::new(),
-            numbers: HashMap::new(),
-            strings: HashMap::new(),
-        }
-    });
-    let mut term = term::terminfo::TerminfoTerminal::new_with_terminfo(stdout, terminfo);
+    let mut stdout = stdout();
     let with_confirm = format!(
         "\
         {question}\n\
@@ -65,8 +50,8 @@ pub(crate) async fn prompt(
         },
     );
 
-    term.write_all(with_confirm.as_bytes())?;
-    term.flush()?;
+    stdout.write_all(with_confirm.as_bytes())?;
+    stdout.flush()?;
 
     let input = read_line()?;
 
