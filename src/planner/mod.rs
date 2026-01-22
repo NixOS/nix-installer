@@ -107,6 +107,26 @@ pub mod steam_deck;
 
 use std::{collections::HashMap, path::PathBuf, string::FromUtf8Error};
 
+/// Parse the ID field from /etc/os-release
+fn get_os_release_id() -> Option<String> {
+    let content = std::fs::read_to_string("/etc/os-release").ok()?;
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("ID=") {
+            let value = value.trim();
+            // Remove quotes if present (single or double)
+            let value = if (value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\''))
+            {
+                &value[1..value.len() - 1]
+            } else {
+                value
+            };
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -196,8 +216,9 @@ impl BuiltinPlanner {
     }
 
     async fn detect_linux_distro() -> Result<Self, PlannerError> {
-        let is_steam_deck =
-            os_release::OsRelease::new().is_ok_and(|os_release| os_release.id == "steamos");
+        let is_steam_deck = get_os_release_id()
+            .map(|id| id == "steamos")
+            .unwrap_or(false);
         if is_steam_deck {
             return Ok(Self::SteamDeck(steam_deck::SteamDeck::default().await?));
         }
@@ -374,9 +395,7 @@ pub enum PlannerError {
     /// An [`InstallSettingsError`]
     #[error(transparent)]
     InstallSettings(#[from] InstallSettingsError),
-    /// An OS Release error
-    #[error("Fetching `/etc/os-release`")]
-    OsRelease(#[source] std::io::Error),
+
     /// A MacOS (Darwin) plist related error
     #[error(transparent)]
     Plist(#[from] plist::Error),
@@ -414,7 +433,7 @@ impl HasExpectedErrors for PlannerError {
             PlannerError::Sysctl(_) => None,
             this @ PlannerError::IncompatibleOperatingSystem { .. } => Some(Box::new(this)),
             this @ PlannerError::RosettaDetected => Some(Box::new(this)),
-            PlannerError::OsRelease(_) => None,
+
             PlannerError::Utf8(_) => None,
             PlannerError::SelinuxRequirements => Some(Box::new(self)),
             PlannerError::Custom(_e) => {
