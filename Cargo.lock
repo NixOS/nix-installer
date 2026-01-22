@@ -1115,7 +1115,7 @@ dependencies = [
  "target-lexicon",
  "tempfile",
  "term",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
  "tracing-error",
