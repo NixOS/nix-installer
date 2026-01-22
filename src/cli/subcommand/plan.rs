@@ -26,20 +26,19 @@ pub struct Plan {
     pub output: PathBuf,
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for Plan {
     #[tracing::instrument(level = "debug", skip_all, fields())]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         let Self { planner, output } = self;
 
         ensure_root()?;
 
         let planner = match planner {
             Some(planner) => planner,
-            None => BuiltinPlanner::default().await?,
+            None => BuiltinPlanner::default()?,
         };
 
-        let res = planner.plan().await;
+        let res = planner.plan();
 
         let install_plan = match res {
             Ok(plan) => plan,
@@ -53,9 +52,7 @@ impl CommandExecute for Plan {
         };
 
         let json = serde_json::to_string_pretty(&install_plan)?;
-        tokio::fs::write(output, format!("{json}\n"))
-            .await
-            .wrap_err("Writing plan")?;
+        std::fs::write(output, format!("{json}\n")).wrap_err("Writing plan")?;
 
         Ok(ExitCode::SUCCESS)
     }

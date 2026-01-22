@@ -16,6 +16,8 @@ pub(crate) mod set_tmutil_exclusion;
 pub(crate) mod set_tmutil_exclusions;
 pub(crate) mod unmount_apfs_volume;
 
+use std::fs;
+use std::process::Command;
 use std::time::Duration;
 use std::{io::ErrorKind, path::Path};
 
@@ -32,7 +34,6 @@ pub use kickstart_launchctl_service::KickstartLaunchctlService;
 use serde::Deserialize;
 pub use set_tmutil_exclusion::SetTmutilExclusion;
 pub use set_tmutil_exclusions::SetTmutilExclusions;
-use tokio::{fs, process::Command};
 pub use unmount_apfs_volume::UnmountApfsVolume;
 use uuid::Uuid;
 
@@ -43,23 +44,21 @@ use super::ActionErrorKind;
 pub const DARWIN_LAUNCHD_DOMAIN: &str = "system";
 pub const KEYCHAIN_NIX_STORE_SERVICE: &str = "Nix Store";
 
-pub(crate) async fn get_disk_info_for_label(
+pub(crate) fn get_disk_info_for_label(
     apfs_volume_label: &str,
 ) -> Result<Option<DiskUtilApfsInfoOutput>, ActionErrorKind> {
     let mut command = Command::new("/usr/sbin/diskutil");
-    command.process_group(0);
     command.arg("info");
     command.arg("-plist");
     command.arg(apfs_volume_label);
     command.stdin(std::process::Stdio::null());
     command.stdout(std::process::Stdio::piped());
 
-    let command_str = format!("{:?}", command.as_std());
+    let command_str = format!("{:?}", command);
 
     tracing::trace!(command = command_str, "Executing");
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
 
     if let Ok(diskutil_info) = plist::from_bytes::<DiskUtilApfsInfoOutput>(&output.stdout) {
@@ -98,20 +97,15 @@ struct DiskUtilApfsInfoError {
 }
 
 #[tracing::instrument]
-pub(crate) async fn service_is_disabled(
-    domain: &str,
-    service: &str,
-) -> Result<bool, ActionErrorKind> {
+pub(crate) fn service_is_disabled(domain: &str, service: &str) -> Result<bool, ActionErrorKind> {
     let output = execute_command(
         Command::new("launchctl")
-            .process_group(0)
             .arg("print-disabled")
             .arg(domain)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
-    )
-    .await?;
+    )?;
     let utf8_output = String::from_utf8_lossy(&output.stdout);
     let is_disabled = utf8_output.contains(&format!("\"{service}\" => disabled"));
     tracing::trace!(is_disabled, "Service disabled status");
@@ -120,18 +114,16 @@ pub(crate) async fn service_is_disabled(
 
 /// Waits for the Nix Store mountpoint to exist, up to `retry_tokens * 100ms` amount of time.
 #[tracing::instrument]
-pub(crate) async fn wait_for_nix_store_dir() -> Result<(), ActionErrorKind> {
+pub(crate) fn wait_for_nix_store_dir() -> Result<(), ActionErrorKind> {
     let mut retry_tokens: usize = 150;
     loop {
         let mut command = Command::new("/usr/sbin/diskutil");
-        command.process_group(0);
         command.args(["info", "/nix"]);
         command.stderr(std::process::Stdio::null());
         command.stdout(std::process::Stdio::null());
-        tracing::debug!(%retry_tokens, command = ?command.as_std(), "Checking for Nix Store mount path existence");
+        tracing::debug!(%retry_tokens, command = ?command, "Checking for Nix Store mount path existence");
         let output = command
             .output()
-            .await
             .map_err(|e| ActionErrorKind::command(&command, e))?;
         if output.status.success() {
             break;
@@ -140,7 +132,7 @@ pub(crate) async fn wait_for_nix_store_dir() -> Result<(), ActionErrorKind> {
         } else {
             retry_tokens = retry_tokens.saturating_sub(1);
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        std::thread::sleep(Duration::from_millis(100));
     }
 
     Ok(())
@@ -149,21 +141,19 @@ pub(crate) async fn wait_for_nix_store_dir() -> Result<(), ActionErrorKind> {
 /// Wait for `launchctl bootstrap {domain} {service_path}` to succeed up to `retry_tokens * 500ms` amount
 /// of time.
 #[tracing::instrument]
-pub(crate) async fn retry_bootstrap(
+pub(crate) fn retry_bootstrap(
     domain: &str,
     service_name: &str,
     service_path: &Path,
 ) -> Result<(), ActionErrorKind> {
     let check_service_running = execute_command(
         Command::new("launchctl")
-            .process_group(0)
             .arg("print")
             .arg([domain, service_name].join("/"))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
-    )
-    .await;
+    );
 
     if check_service_running.is_ok() {
         // NOTE(cole-h): if `launchctl print` succeeds, that means the service is already loaded
@@ -174,18 +164,16 @@ pub(crate) async fn retry_bootstrap(
     let mut retry_tokens: usize = 10;
     loop {
         let mut command = Command::new("launchctl");
-        command.process_group(0);
         command.arg("bootstrap");
         command.arg(domain);
         command.arg(service_path);
         command.stdin(std::process::Stdio::null());
         command.stderr(std::process::Stdio::null());
         command.stdout(std::process::Stdio::null());
-        tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for bootstrap to succeed");
+        tracing::debug!(%retry_tokens, command = ?command, "Waiting for bootstrap to succeed");
 
         let output = command
             .output()
-            .await
             .map_err(|e| ActionErrorKind::command(&command, e))?;
 
         if output.status.success() {
@@ -196,7 +184,7 @@ pub(crate) async fn retry_bootstrap(
             retry_tokens = retry_tokens.saturating_sub(1);
         }
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     Ok(())
@@ -205,19 +193,17 @@ pub(crate) async fn retry_bootstrap(
 /// Wait for `launchctl bootout {domain}/{service_name}` to succeed up to `retry_tokens * 500ms` amount
 /// of time.
 #[tracing::instrument]
-pub(crate) async fn retry_bootout(domain: &str, service_name: &str) -> Result<(), ActionErrorKind> {
+pub(crate) fn retry_bootout(domain: &str, service_name: &str) -> Result<(), ActionErrorKind> {
     let service_identifier = [domain, service_name].join("/");
 
     let check_service_running = execute_command(
         Command::new("launchctl")
-            .process_group(0)
             .arg("print")
             .arg(&service_identifier)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
-    )
-    .await;
+    );
 
     if check_service_running.is_err() {
         // NOTE(cole-h): if `launchctl print` fails, that means the service is already unloaded and
@@ -228,17 +214,15 @@ pub(crate) async fn retry_bootout(domain: &str, service_name: &str) -> Result<()
     let mut retry_tokens: usize = 10;
     loop {
         let mut command = Command::new("launchctl");
-        command.process_group(0);
         command.arg("bootout");
         command.arg(&service_identifier);
         command.stdin(std::process::Stdio::null());
         command.stderr(std::process::Stdio::null());
         command.stdout(std::process::Stdio::null());
-        tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for bootout to succeed");
+        tracing::debug!(%retry_tokens, command = ?command, "Waiting for bootout to succeed");
 
         let output = command
             .output()
-            .await
             .map_err(|e| ActionErrorKind::command(&command, e))?;
 
         if output.status.success() {
@@ -249,7 +233,7 @@ pub(crate) async fn retry_bootout(domain: &str, service_name: &str) -> Result<()
             retry_tokens = retry_tokens.saturating_sub(1);
         }
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     Ok(())
@@ -263,8 +247,8 @@ pub(crate) async fn retry_bootout(domain: &str, service_name: &str) -> Result<()
 /// 2025-04-12 14:22:58.165279 (system/org.nixos.nix-daemon - nix-daemon.socket) <Error>: Failed to unlinkat() old socket path: path=/var/run/nix-daemon.socket, error=Invalid argument (22)
 /// ```
 #[tracing::instrument]
-pub(crate) async fn remove_socket_path(path: &Path) {
-    if let Err(err) = fs::remove_file(path).await {
+pub(crate) fn remove_socket_path(path: &Path) {
+    if let Err(err) = fs::remove_file(path) {
         if err.kind() != ErrorKind::NotFound {
             tracing::warn!(?err, ?path, "Could not clean up unused socket");
         }
@@ -274,27 +258,22 @@ pub(crate) async fn remove_socket_path(path: &Path) {
 /// Wait for `launchctl kickstart {domain}/{service_name}` to succeed up to `retry_tokens * 500ms` amount
 /// of time.
 #[tracing::instrument]
-pub(crate) async fn retry_kickstart(
-    domain: &str,
-    service_name: &str,
-) -> Result<(), ActionErrorKind> {
+pub(crate) fn retry_kickstart(domain: &str, service_name: &str) -> Result<(), ActionErrorKind> {
     let service_identifier = [domain, service_name].join("/");
 
     let mut retry_tokens: usize = 10;
     loop {
         let mut command = Command::new("launchctl");
-        command.process_group(0);
         command.arg("kickstart");
         command.arg("-k");
         command.arg(&service_identifier);
         command.stdin(std::process::Stdio::null());
         command.stderr(std::process::Stdio::null());
         command.stdout(std::process::Stdio::null());
-        tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for kickstart to succeed");
+        tracing::debug!(%retry_tokens, command = ?command, "Waiting for kickstart to succeed");
 
         let output = command
             .output()
-            .await
             .map_err(|e| ActionErrorKind::command(&command, e))?;
 
         if output.status.success() {
@@ -305,7 +284,7 @@ pub(crate) async fn retry_kickstart(
             retry_tokens = retry_tokens.saturating_sub(1);
         }
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     Ok(())

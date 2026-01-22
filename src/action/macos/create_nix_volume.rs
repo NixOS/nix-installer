@@ -6,11 +6,11 @@ use crate::action::{
     },
     Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
 };
+use std::process::Command;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use tokio::process::Command;
 use tracing::{span, Span};
 
 use super::{
@@ -43,7 +43,7 @@ pub struct CreateNixVolume {
 
 impl CreateNixVolume {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         disk: impl AsRef<Path>,
         name: String,
         case_sensitive: bool,
@@ -58,31 +58,24 @@ impl CreateNixVolume {
             "nix\n".into(), /* The newline is required otherwise it segfaults */
             create_or_insert_into_file::Position::End,
         )
-        .await
         .map_err(Self::error)?;
 
-        let create_synthetic_objects = CreateSyntheticObjects::plan().await.map_err(Self::error)?;
+        let create_synthetic_objects = CreateSyntheticObjects::plan().map_err(Self::error)?;
 
-        let create_volume = CreateApfsVolume::plan(disk, name.clone(), case_sensitive)
-            .await
-            .map_err(Self::error)?;
+        let create_volume =
+            CreateApfsVolume::plan(disk, name.clone(), case_sensitive).map_err(Self::error)?;
 
         let unmount_volume = if create_volume.state == crate::action::ActionState::Completed {
             UnmountApfsVolume::plan_skip_if_already_mounted_to_nix(disk, name.clone())
-                .await
                 .map_err(Self::error)?
         } else {
-            UnmountApfsVolume::plan(disk, name.clone())
-                .await
-                .map_err(Self::error)?
+            UnmountApfsVolume::plan(disk, name.clone()).map_err(Self::error)?
         };
 
-        let create_fstab_entry = CreateFstabEntry::plan(name.clone())
-            .await
-            .map_err(Self::error)?;
+        let create_fstab_entry = CreateFstabEntry::plan(name.clone()).map_err(Self::error)?;
 
         let encrypt_volume = if encrypt {
-            Some(EncryptApfsVolume::plan(disk, &name, &create_volume).await?)
+            Some(EncryptApfsVolume::plan(disk, &name, &create_volume)?)
         } else {
             None
         };
@@ -94,18 +87,15 @@ impl CreateNixVolume {
             "/nix",
             encrypt,
         )
-        .await
         .map_err(Self::error)?;
 
         let bootstrap_volume =
             BootstrapLaunchctlService::plan(NIX_VOLUME_MOUNTD_NAME, NIX_VOLUME_MOUNTD_DEST)
-                .await
                 .map_err(Self::error)?;
         let kickstart_launchctl_service =
             KickstartLaunchctlService::plan(DARWIN_LAUNCHD_DOMAIN, NIX_VOLUME_MOUNTD_NAME)
-                .await
                 .map_err(Self::error)?;
-        let enable_ownership = EnableOwnership::plan("/nix").await.map_err(Self::error)?;
+        let enable_ownership = EnableOwnership::plan("/nix").map_err(Self::error)?;
 
         Ok(Self {
             disk: disk.to_path_buf(),
@@ -127,7 +117,6 @@ impl CreateNixVolume {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_nix_volume")]
 impl Action for CreateNixVolume {
     fn action_tag() -> ActionTag {
@@ -170,20 +159,15 @@ impl Action for CreateNixVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         self.create_or_append_synthetic_conf
             .try_execute()
-            .await
             .map_err(Self::error)?;
         self.create_synthetic_objects
             .try_execute()
-            .await
             .map_err(Self::error)?;
-        self.unmount_volume.try_execute().await.ok(); // We actually expect this may fail.
-        self.create_volume
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.unmount_volume.try_execute().ok(); // We actually expect this may fail.
+        self.create_volume.try_execute().map_err(Self::error)?;
 
         let mut retry_tokens: usize = 50;
         loop {
@@ -192,10 +176,9 @@ impl Action for CreateNixVolume {
             command.arg(&self.name);
             command.stderr(std::process::Stdio::null());
             command.stdout(std::process::Stdio::null());
-            tracing::debug!(%retry_tokens, command = ?command.as_std(), "Checking for Nix Store volume existence");
+            tracing::debug!(%retry_tokens, command = ?command, "Checking for Nix Store volume existence");
             let output = command
                 .output()
-                .await
                 .map_err(|e| ActionErrorKind::command(&command, e))
                 .map_err(Self::error)?;
             if output.status.success() {
@@ -207,39 +190,26 @@ impl Action for CreateNixVolume {
             } else {
                 retry_tokens = retry_tokens.saturating_sub(1);
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            std::thread::sleep(Duration::from_millis(100));
         }
 
-        self.create_fstab_entry
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.create_fstab_entry.try_execute().map_err(Self::error)?;
         if let Some(encrypt_volume) = &mut self.encrypt_volume {
-            encrypt_volume.try_execute().await.map_err(Self::error)?
+            encrypt_volume.try_execute().map_err(Self::error)?
         }
         self.setup_volume_daemon
             .try_execute()
-            .await
             .map_err(Self::error)?;
 
-        self.bootstrap_volume
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.bootstrap_volume.try_execute().map_err(Self::error)?;
 
         self.kickstart_launchctl_service
             .try_execute()
-            .await
             .map_err(Self::error)?;
 
-        crate::action::macos::wait_for_nix_store_dir()
-            .await
-            .map_err(Self::error)?;
+        crate::action::macos::wait_for_nix_store_dir().map_err(Self::error)?;
 
-        self.enable_ownership
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.enable_ownership.try_execute().map_err(Self::error)?;
 
         Ok(())
     }
@@ -270,35 +240,35 @@ impl Action for CreateNixVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
-        if let Err(err) = self.enable_ownership.try_revert().await {
+        if let Err(err) = self.enable_ownership.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.kickstart_launchctl_service.try_revert().await {
+        if let Err(err) = self.kickstart_launchctl_service.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.bootstrap_volume.try_revert().await {
+        if let Err(err) = self.bootstrap_volume.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.setup_volume_daemon.try_revert().await {
+        if let Err(err) = self.setup_volume_daemon.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.create_fstab_entry.try_revert().await {
+        if let Err(err) = self.create_fstab_entry.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.unmount_volume.try_revert().await {
+        if let Err(err) = self.unmount_volume.try_revert() {
             errors.push(err);
         }
 
         let mut revert_create_volume_failed = false;
-        if let Err(err) = self.create_volume.try_revert().await {
+        if let Err(err) = self.create_volume.try_revert() {
             revert_create_volume_failed = true;
             errors.push(err);
         }
@@ -311,17 +281,17 @@ impl Action for CreateNixVolume {
                     "Not reverting encrypt_volume step (which would delete the disk encryption \
                     password) because deleting the volume failed"
                 );
-            } else if let Err(err) = encrypt_volume.try_revert().await {
+            } else if let Err(err) = encrypt_volume.try_revert() {
                 errors.push(err);
             }
         }
 
         // Purposefully not reversed
-        if let Err(err) = self.create_or_append_synthetic_conf.try_revert().await {
+        if let Err(err) = self.create_or_append_synthetic_conf.try_revert() {
             errors.push(err);
         }
 
-        if let Err(err) = self.create_synthetic_objects.try_revert().await {
+        if let Err(err) = self.create_synthetic_objects.try_revert() {
             errors.push(err);
         }
 

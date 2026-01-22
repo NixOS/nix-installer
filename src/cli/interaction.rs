@@ -10,7 +10,7 @@ pub enum PromptChoice {
     Explain,
 }
 
-pub(crate) async fn prompt(
+pub(crate) fn prompt(
     question: impl AsRef<str>,
     default: PromptChoice,
     currently_explaining: bool,
@@ -78,7 +78,7 @@ pub(crate) fn read_line() -> eyre::Result<String> {
     .context("unable to read from stdin for confirmation")
 }
 
-pub(crate) async fn clean_exit_with_message(message: impl AsRef<str>) -> ! {
+pub(crate) fn clean_exit_with_message(message: impl AsRef<str>) -> ! {
     eprintln!("{}", message.as_ref());
     std::process::exit(0)
 }

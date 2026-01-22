@@ -20,7 +20,7 @@ pub struct RevertCleanSteamosNixOffload;
 
 impl RevertCleanSteamosNixOffload {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         if Path::new(OFFLOAD_PATH).exists() {
             Ok(StatefulAction::uncompleted(RevertCleanSteamosNixOffload))
         } else {
@@ -29,7 +29,6 @@ impl RevertCleanSteamosNixOffload {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "revert_clean_steamos_nix_offload")]
 impl Action for RevertCleanSteamosNixOffload {
     fn action_tag() -> ActionTag {
@@ -48,7 +47,7 @@ impl Action for RevertCleanSteamosNixOffload {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         // noop
 
         Ok(())
@@ -64,13 +63,12 @@ impl Action for RevertCleanSteamosNixOffload {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let paths = glob::glob(OFFLOAD_PATH).map_err(Self::error)?;
 
         for path in paths {
             let path = path.map_err(Self::error)?;
             crate::util::remove_dir_all(&path, OnMissing::Error)
-                .await
                 .map_err(|e| Self::error(ActionErrorKind::Remove(path, e)))?;
         }
 

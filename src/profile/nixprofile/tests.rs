@@ -1,19 +1,17 @@
+use std::io::Write;
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
-
-use tokio::io::AsyncWriteExt;
 
 use super::super::WriteToDefaultProfile;
 use super::NixCommandExt;
 use super::NixProfile;
 
-async fn should_skip() -> bool {
-    let cmdret = tokio::process::Command::new("nix")
+fn should_skip() -> bool {
+    let cmdret = std::process::Command::new("nix")
         .set_nix_options(Path::new("/dev/null"))
         .unwrap()
         .arg("--version")
-        .output()
-        .await;
+        .output();
 
     if cmdret.is_ok() {
         return false;
@@ -23,30 +21,28 @@ async fn should_skip() -> bool {
     }
 }
 
-async fn sample_tree(dirname: &str, filename: &str, content: &str) -> PathBuf {
+fn sample_tree(dirname: &str, filename: &str, content: &str) -> PathBuf {
     let temp_dir = tempfile::tempdir().unwrap();
 
     let sub_dir = temp_dir.path().join(dirname);
-    tokio::fs::create_dir(&sub_dir).await.unwrap();
+    std::fs::create_dir(&sub_dir).unwrap();
 
     let file = sub_dir.join(filename);
 
-    let mut f = tokio::fs::File::options()
+    let mut f = std::fs::File::options()
         .create(true)
         .write(true)
         .open(&file)
-        .await
         .unwrap();
 
-    f.write_all(content.as_bytes()).await.unwrap();
+    f.write_all(content.as_bytes()).unwrap();
 
-    let mut cmdret = tokio::process::Command::new("nix")
+    let mut cmdret = std::process::Command::new("nix")
         .set_nix_options(Path::new("/dev/null"))
         .unwrap()
         .args(&["store", "add"])
         .arg(&sub_dir)
         .output()
-        .await
         .unwrap();
 
     assert!(
@@ -70,17 +66,17 @@ async fn sample_tree(dirname: &str, filename: &str, content: &str) -> PathBuf {
     p
 }
 
-#[tokio::test]
-async fn test_detect_intersection() {
-    if should_skip().await {
+#[test]
+fn test_detect_intersection() {
+    if should_skip() {
         return;
     }
 
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
-    let tree_1 = sample_tree("foo", "foo", "a").await;
-    let tree_2 = sample_tree("bar", "foo", "b").await;
+    let tree_1 = sample_tree("foo", "foo", "a");
+    let tree_2 = sample_tree("bar", "foo", "b");
 
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -89,21 +85,20 @@ async fn test_detect_intersection() {
         pkgs: &[&tree_1, &tree_2],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap_err();
 }
 
-#[tokio::test]
-async fn test_no_intersection() {
-    if should_skip().await {
+#[test]
+fn test_no_intersection() {
+    if should_skip() {
         return;
     }
 
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
-    let tree_1 = sample_tree("foo", "foo", "a").await;
-    let tree_2 = sample_tree("bar", "bar", "b").await;
+    let tree_1 = sample_tree("foo", "foo", "a");
+    let tree_2 = sample_tree("bar", "bar", "b");
 
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -112,24 +107,19 @@ async fn test_no_intersection() {
         pkgs: &[&tree_1, &tree_2],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap();
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("foo"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("foo")).unwrap(),
         "a"
     );
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("bar"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("bar")).unwrap(),
         "b"
     );
 
-    let tree_3 = sample_tree("baz", "baz", "c").await;
-    let tree_4 = sample_tree("tux", "tux", "d").await;
+    let tree_3 = sample_tree("baz", "baz", "c");
+    let tree_4 = sample_tree("tux", "tux", "d");
 
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -138,34 +128,29 @@ async fn test_no_intersection() {
         pkgs: &[&tree_3, &tree_4],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap();
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("baz"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("baz")).unwrap(),
         "c"
     );
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("tux"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("tux")).unwrap(),
         "d"
     );
 }
 
-#[tokio::test]
-async fn test_overlap_replaces() {
-    if should_skip().await {
+#[test]
+fn test_overlap_replaces() {
+    if should_skip() {
         return;
     }
 
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
-    let tree_base = sample_tree("fizz", "fizz", "fizz").await;
-    let tree_1 = sample_tree("foo", "foo", "a").await;
+    let tree_base = sample_tree("fizz", "fizz", "fizz");
+    let tree_1 = sample_tree("foo", "foo", "a");
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
         nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -173,23 +158,18 @@ async fn test_overlap_replaces() {
         pkgs: &[&tree_base, &tree_1],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap();
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("fizz"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("fizz")).unwrap(),
         "fizz"
     );
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("foo"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("foo")).unwrap(),
         "a"
     );
 
-    let tree_2 = sample_tree("foo", "foo", "b").await;
+    let tree_2 = sample_tree("foo", "foo", "b");
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
         nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -197,17 +177,14 @@ async fn test_overlap_replaces() {
         pkgs: &[&tree_2],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap();
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("foo"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("foo")).unwrap(),
         "b"
     );
 
-    let tree_3 = sample_tree("bar", "foo", "c").await;
+    let tree_3 = sample_tree("bar", "foo", "c");
     (NixProfile {
         nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
         nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
@@ -215,20 +192,15 @@ async fn test_overlap_replaces() {
         pkgs: &[&tree_3],
     })
     .install_packages(WriteToDefaultProfile::Isolated)
-    .await
     .unwrap();
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("foo"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("foo")).unwrap(),
         "c"
     );
 
     assert_eq!(
-        tokio::fs::read_to_string(profile_path.join("fizz"))
-            .await
-            .unwrap(),
+        std::fs::read_to_string(profile_path.join("fizz")).unwrap(),
         "fizz"
     );
 }

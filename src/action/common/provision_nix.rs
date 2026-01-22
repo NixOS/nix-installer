@@ -29,7 +29,7 @@ pub struct ProvisionNix {
 
 impl ProvisionNix {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(settings: &CommonSettings) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(settings: &CommonSettings) -> Result<StatefulAction<Self>, ActionError> {
         let url_or_path = settings.nix_package_url.clone().unwrap_or_else(|| {
             UrlOrPath::from_str(crate::settings::NIX_TARBALL_URL)
                 .expect("Fault: the built-in Nix tarball URL does not parse.")
@@ -40,13 +40,11 @@ impl ProvisionNix {
             PathBuf::from(SCRATCH_DIR),
             settings.proxy.clone(),
             settings.ssl_cert_file.clone(),
-        )
-        .await?;
+        )?;
 
-        let create_nix_tree = CreateNixTree::plan().await.map_err(Self::error)?;
-        let move_unpacked_nix = MoveUnpackedNix::plan(PathBuf::from(SCRATCH_DIR))
-            .await
-            .map_err(Self::error)?;
+        let create_nix_tree = CreateNixTree::plan().map_err(Self::error)?;
+        let move_unpacked_nix =
+            MoveUnpackedNix::plan(PathBuf::from(SCRATCH_DIR)).map_err(Self::error)?;
         Ok(Self {
             nix_store_gid: settings.nix_build_group_id,
             fetch_nix,
@@ -57,7 +55,6 @@ impl ProvisionNix {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "provision_nix")]
 impl Action for ProvisionNix {
     fn action_tag() -> ActionTag {
@@ -96,31 +93,15 @@ impl Action for ProvisionNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
-        // We fetch nix while doing the rest, then move it over.
-        let mut fetch_nix_clone = self.fetch_nix.clone();
-        let fetch_nix_handle = tokio::task::spawn(async {
-            fetch_nix_clone.try_execute().await.map_err(Self::error)?;
-            Result::<_, ActionError>::Ok(fetch_nix_clone)
-        });
+    fn execute(&mut self) -> Result<(), ActionError> {
+        // Execute sequentially (no async parallelism needed)
+        self.fetch_nix.try_execute().map_err(Self::error)?;
 
-        self.create_nix_tree
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.create_nix_tree.try_execute().map_err(Self::error)?;
 
-        self.fetch_nix = fetch_nix_handle
-            .await
-            .map_err(ActionErrorKind::Join)
-            .map_err(Self::error)??;
-        self.move_unpacked_nix
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+        self.move_unpacked_nix.try_execute().map_err(Self::error)?;
 
-        ensure_nix_store_group(self.nix_store_gid)
-            .await
-            .map_err(Self::error)?;
+        ensure_nix_store_group(self.nix_store_gid).map_err(Self::error)?;
 
         Ok(())
     }
@@ -142,18 +123,14 @@ impl Action for ProvisionNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
-        if let Err(err) = self.fetch_nix.try_revert().await {
+        if let Err(err) = self.fetch_nix.try_revert() {
             errors.push(err)
         }
 
-        if let Err(err) = self.create_nix_tree.try_revert().await {
-            errors.push(err)
-        }
-
-        if let Err(err) = self.move_unpacked_nix.try_revert().await {
+        if let Err(err) = self.create_nix_tree.try_revert() {
             errors.push(err)
         }
 
@@ -170,68 +147,65 @@ impl Action for ProvisionNix {
     }
 }
 
-/// If there is an existing /nix/store directory, ensure that the group ID we're going to use for
-/// the nix build group matches the group that owns /nix/store to prevent weird mismatched-ownership
-/// issues.
-async fn ensure_nix_store_group(desired_nix_build_group_id: u32) -> Result<(), ActionErrorKind> {
-    let previous_store_metadata = tokio::fs::metadata(NIX_STORE_LOCATION)
-        .await
-        .map_err(|e| ActionErrorKind::GettingMetadata(NIX_STORE_LOCATION.into(), e))?;
-    let previous_store_group_id = previous_store_metadata.gid();
-    if previous_store_group_id != desired_nix_build_group_id {
-        let entryiter = walkdir::WalkDir::new(NIX_STORE_LOCATION)
-            .follow_links(false)
-            .same_file_system(true)
-            // chown all of the contents of the dir before NIX_STORE_LOCATION,
-            // this means our test of "does /nix/store have the right gid?"
-            // is useful until the entire store is examined
-            .contents_first(true)
-            .into_iter()
-            .filter_map(|entry| {
-                match entry {
-                    Ok(entry) => Some(entry),
-                    Err(e) => {
-                        tracing::warn!(%e, "Enumerating the Nix store");
-                        None
-                    }
-                }
-            })
-            .filter_map(|entry| match entry.metadata() {
-                Ok(metadata) => Some((entry, metadata)),
-                Err(e) => {
-                    tracing::warn!(
-                        path = %entry.path().to_string_lossy(),
-                        %e,
-                        "Reading ownership and mode data"
-                    );
-                    None
-                }
-            })
-            .filter_map(|(entry, metadata)| {
-                // If the dirent's group ID is the *previous* GID, reassign.
-                // NOTE(@grahamc, 2024-11-15): Nix on macOS has store paths with a group of nixbld, and sometimes a group of `wheel` (0).
-                // On NixOS, all the store paths have their GID set to 0.
-                // The discrepancy is due to BSD's behavior around the /nix/store sticky bit.
-                // On BSD, it causes newly created files to inherit the group of the parent directory.
-                if metadata.gid() == previous_store_group_id {
-                    return Some((entry, metadata));
-                }
+/// Everything under /nix/store should be group-owned by the nix_build_group_id.
+/// This function walks /nix/store and makes sure that is true.
+fn ensure_nix_store_group(nix_store_gid: u32) -> Result<(), ActionErrorKind> {
+    let entryiter = walkdir::WalkDir::new(NIX_STORE_LOCATION)
+        .follow_links(false)
+        .same_file_system(true)
+        .contents_first(true)
+        .into_iter()
+        .filter_entry(|entry| {
+            let dominated_by_trustworthy_builder_process =
+                // The current directory...
+                entry.path() == std::path::Path::new(NIX_STORE_LOCATION)
+                // ... or immediate children of the current directory
+                // Children of children are owned by the build process, and we don't
+                // want to own them to root.
+                || entry.path().parent() == Some(std::path::Path::new(NIX_STORE_LOCATION));
 
+            dominated_by_trustworthy_builder_process
+        })
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                tracing::warn!(%e, "Failed to get entry in /nix/store");
                 None
-            });
-        for (entry, _metadata) in entryiter {
-            if let Err(e) =
-                std::os::unix::fs::lchown(entry.path(), Some(0), Some(desired_nix_build_group_id))
-            {
+            },
+        })
+        .filter_map(|entry| match entry.metadata() {
+            Ok(metadata) => Some((entry, metadata)),
+            Err(e) => {
                 tracing::warn!(
                     path = %entry.path().to_string_lossy(),
                     %e,
-                    "Failed to set the owner:group to 0:{}",
-                    desired_nix_build_group_id
+                    "Failed to read ownership and mode data"
                 );
+                None
+            },
+        })
+        .filter_map(|(entry, metadata)| {
+            // Dirents that are already the right group are to be skipped
+            if metadata.gid() == nix_store_gid {
+                return None;
             }
+
+            Some((entry, metadata))
+        });
+
+    for (entry, _metadata) in entryiter {
+        tracing::debug!(
+            path = %entry.path().to_string_lossy(),
+            "Re-owning path's group to {nix_store_gid}"
+        );
+
+        if let Err(e) = std::os::unix::fs::lchown(entry.path(), None, Some(nix_store_gid)) {
+            tracing::warn!(
+                path = %entry.path().to_string_lossy(),
+                %e,
+                "Failed to set the group to {nix_store_gid}"
+            );
         }
     }
-
     Ok(())
 }

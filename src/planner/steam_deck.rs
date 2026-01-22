@@ -98,7 +98,7 @@ To test on a specific build id of the Steam Deck:
 */
 use std::{collections::HashMap, path::PathBuf, process::Output};
 
-use tokio::process::Command;
+use std::process::Command;
 
 use crate::{
     action::{
@@ -135,29 +135,27 @@ pub struct SteamDeck {
     pub settings: CommonSettings,
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "steam-deck")]
 impl Planner for SteamDeck {
-    async fn default() -> Result<Self, PlannerError> {
+    fn default() -> Result<Self, PlannerError> {
         Ok(Self {
             persistence: PathBuf::from("/home/nix"),
-            settings: CommonSettings::default().await?,
+            settings: CommonSettings::default()?,
         })
     }
 
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         // Starting in roughly build ID `20230522.1000`, the Steam Deck has a `/home/.steamos/offload/nix` directory and `nix.mount` unit we can use instead of creating a mountpoint.
-        let requires_nix_bind_mount = detect_requires_bind_mount().await?;
+        let requires_nix_bind_mount = detect_requires_bind_mount()?;
 
         let mut actions = vec![
             // Primarily for uninstall
             SystemctlDaemonReload::plan()
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ];
 
-        if let Ok(nix_mount_status) = systemctl_status("nix.mount").await {
+        if let Ok(nix_mount_status) = systemctl_status("nix.mount") {
             let nix_mount_status_stderr = String::from_utf8(nix_mount_status.stderr)?;
             if nix_mount_status_stderr.contains("Warning: The unit file, source configuration file or drop-ins of nix.mount changed on disk. Run 'systemctl daemon-reload' to reload units.") {
                 return Err(PlannerError::Custom(Box::new(
@@ -175,7 +173,6 @@ impl Planner for SteamDeck {
             };
             actions.push(
                 CreateDirectory::plan(&persistence, None, None, 0o0755, true)
-                    .await
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -211,7 +208,6 @@ impl Planner for SteamDeck {
                 nix_directory_buf,
                 false,
             )
-            .await
             .map_err(PlannerError::Action)?;
             actions.push(nix_directory_unit.boxed());
 
@@ -247,22 +243,18 @@ impl Planner for SteamDeck {
                 create_bind_mount_buf,
                 false,
             )
-            .await
             .map_err(PlannerError::Action)?;
             actions.push(create_bind_mount_unit.boxed());
         } else {
-            let revert_clean_steamos_nix_offload = RevertCleanSteamosNixOffload::plan()
-                .await
-                .map_err(PlannerError::Action)?;
+            let revert_clean_steamos_nix_offload =
+                RevertCleanSteamosNixOffload::plan().map_err(PlannerError::Action)?;
             actions.push(revert_clean_steamos_nix_offload.boxed());
 
-            let ensure_steamos_nix_directory = EnsureSteamosNixDirectory::plan()
-                .await
-                .map_err(PlannerError::Action)?;
+            let ensure_steamos_nix_directory =
+                EnsureSteamosNixDirectory::plan().map_err(PlannerError::Action)?;
             actions.push(ensure_steamos_nix_directory.boxed());
 
             let start_nix_mount = StartSystemdUnit::plan("nix.mount".to_string(), true)
-                .await
                 .map_err(PlannerError::Action)?;
             actions.push(start_nix_mount.boxed());
         }
@@ -283,7 +275,6 @@ impl Planner for SteamDeck {
                 create_atomic_update_buf.to_string(),
                 false,
             )
-            .await
             .map_err(PlannerError::Action)?;
             actions.push(create_atomic_update_unit.boxed());
         }
@@ -313,7 +304,6 @@ impl Planner for SteamDeck {
             ensure_symlinked_units_resolve_buf,
             false,
         )
-        .await
         .map_err(PlannerError::Action)?;
         actions.push(ensure_symlinked_units_resolve_unit.boxed());
 
@@ -334,7 +324,6 @@ impl Planner for SteamDeck {
         if requires_nix_bind_mount {
             actions.push(
                 StartSystemdUnit::plan("nix.mount".to_string(), false)
-                    .await
                     .map_err(PlannerError::Action)?
                     .boxed(),
             )
@@ -342,32 +331,25 @@ impl Planner for SteamDeck {
 
         actions.append(&mut vec![
             ProvisionNix::plan(&self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             CreateUsersAndGroups::plan(self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             ConfigureNix::plan(shell_profile_locations, &self.settings)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             // Init is required for the steam-deck archetype to make the `/nix` mount
             ConfigureUpstreamInitService::plan(InitSystem::Systemd, true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             StartSystemdUnit::plan("ensure-symlinked-units-resolve.service".to_string(), true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             SystemctlDaemonReload::plan()
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ]);
@@ -390,10 +372,8 @@ impl Planner for SteamDeck {
         Ok(map)
     }
 
-    async fn configured_settings(
-        &self,
-    ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default().await?.settings()?;
+    fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
+        let default = Self::default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -406,7 +386,7 @@ impl Planner for SteamDeck {
         Ok(settings)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError> {
+    fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
             OperatingSystem::Linux => Ok(()),
@@ -417,7 +397,7 @@ impl Planner for SteamDeck {
         }
     }
 
-    async fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
         super::linux::check_not_wsl1()?;
 
         // Unlike the Linux planner, the steam deck planner requires systemd
@@ -426,10 +406,10 @@ impl Planner for SteamDeck {
         Ok(())
     }
 
-    async fn pre_install_check(&self) -> Result<(), PlannerError> {
+    fn pre_install_check(&self) -> Result<(), PlannerError> {
         super::linux::check_not_nixos()?;
 
-        super::linux::check_nix_not_already_installed().await?;
+        super::linux::check_nix_not_already_installed()?;
 
         super::linux::check_not_wsl1()?;
 
@@ -459,11 +439,9 @@ pub enum SteamDeckError {
     NixMountSystemctlDaemonReloadRequired,
 }
 
-pub(crate) async fn detect_requires_bind_mount() -> Result<bool, PlannerError> {
+pub(crate) fn detect_requires_bind_mount() -> Result<bool, PlannerError> {
     let steamos_nix_mount_unit_path = "/usr/lib/systemd/system/nix.mount";
-    let nix_mount_unit = tokio::fs::read_to_string(steamos_nix_mount_unit_path)
-        .await
-        .ok();
+    let nix_mount_unit = std::fs::read_to_string(steamos_nix_mount_unit_path).ok();
 
     match nix_mount_unit {
         Some(nix_mount_unit) if nix_mount_unit.contains("What=/home/.steamos/offload/nix") => {
@@ -473,13 +451,12 @@ pub(crate) async fn detect_requires_bind_mount() -> Result<bool, PlannerError> {
     }
 }
 
-async fn systemctl_status(unit: &str) -> Result<Output, PlannerError> {
+fn systemctl_status(unit: &str) -> Result<Output, PlannerError> {
     let mut command = Command::new("systemctl");
     command.arg("status");
     command.arg(unit);
     let output = command
         .output()
-        .await
-        .map_err(|e| PlannerError::Command(format!("{:?}", command.as_std()), e))?;
+        .map_err(|e| PlannerError::Command(format!("{:?}", command), e))?;
     Ok(output)
 }

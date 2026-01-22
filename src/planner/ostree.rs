@@ -34,29 +34,26 @@ pub struct Ostree {
     pub settings: CommonSettings,
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "ostree")]
 impl Planner for Ostree {
-    async fn default() -> Result<Self, PlannerError> {
+    fn default() -> Result<Self, PlannerError> {
         Ok(Self {
             persistence: PathBuf::from("/var/home/nix"),
-            settings: CommonSettings::default().await?,
+            settings: CommonSettings::default()?,
         })
     }
 
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
-        let has_selinux = detect_selinux().await?;
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        let has_selinux = detect_selinux()?;
         let mut plan = vec![
             // Primarily for uninstall
             SystemctlDaemonReload::plan()
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ];
 
         plan.push(
             CreateDirectory::plan(&self.persistence, None, None, 0o0755, true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -83,7 +80,6 @@ impl Planner for Ostree {
             nix_directory_buf,
             false,
         )
-        .await
         .map_err(PlannerError::Action)?;
         plan.push(nix_directory_unit.boxed());
 
@@ -119,7 +115,6 @@ impl Planner for Ostree {
             create_bind_mount_buf,
             false,
         )
-        .await
         .map_err(PlannerError::Action)?;
         plan.push(create_bind_mount_unit.boxed());
 
@@ -148,7 +143,6 @@ impl Planner for Ostree {
             ensure_symlinked_units_resolve_buf,
             false,
         )
-        .await
         .map_err(PlannerError::Action)?;
         plan.push(ensure_symlinked_units_resolve_unit.boxed());
 
@@ -168,26 +162,22 @@ impl Planner for Ostree {
 
         plan.push(
             StartSystemdUnit::plan("nix.mount".to_string(), false)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
 
         plan.push(
             ProvisionNix::plan(&self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             CreateUsersAndGroups::plan(self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             ConfigureNix::plan(shell_profile_locations, &self.settings)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -198,7 +188,6 @@ impl Planner for Ostree {
                     "/etc/nix-installer/selinux/packages/nix.pp".into(),
                     SELINUX_POLICY_PP_CONTENT,
                 )
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
             );
@@ -206,32 +195,27 @@ impl Planner for Ostree {
 
         plan.push(
             CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
 
         plan.push(
             ConfigureUpstreamInitService::plan(InitSystem::Systemd, true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             StartSystemdUnit::plan("ensure-symlinked-units-resolve.service".to_string(), true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             SystemctlDaemonReload::plan()
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -255,10 +239,8 @@ impl Planner for Ostree {
         Ok(map)
     }
 
-    async fn configured_settings(
-        &self,
-    ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default().await?.settings()?;
+    fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
+        let default = Self::default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -271,7 +253,7 @@ impl Planner for Ostree {
         Ok(settings)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError> {
+    fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
             OperatingSystem::Linux => Ok(()),
@@ -282,7 +264,7 @@ impl Planner for Ostree {
         }
     }
 
-    async fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
         check_not_wsl1()?;
 
         check_systemd_active()?;
@@ -290,10 +272,10 @@ impl Planner for Ostree {
         Ok(())
     }
 
-    async fn pre_install_check(&self) -> Result<(), PlannerError> {
+    fn pre_install_check(&self) -> Result<(), PlannerError> {
         check_not_nixos()?;
 
-        check_nix_not_already_installed().await?;
+        check_nix_not_already_installed()?;
 
         check_not_wsl1()?;
 

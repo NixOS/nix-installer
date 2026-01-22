@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    cli::{ensure_root, interaction::PromptChoice, signal_channel},
+    cli::{ensure_root, interaction::PromptChoice, setup_signal_handler},
     error::HasExpectedErrors,
     plan::{current_version, RECEIPT_LOCATION},
     InstallPlan, NixInstallerError,
@@ -42,10 +42,9 @@ pub struct Uninstall {
     pub receipt: PathBuf,
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for Uninstall {
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         let Self {
             no_confirm,
             receipt,
@@ -91,8 +90,7 @@ impl CommandExecute for Uninstall {
                         .collect()
                 };
                 let temp_exe = temp.join(format!("nix-installer-{random_trailer}"));
-                tokio::fs::copy(&current_exe, &temp_exe)
-                    .await
+                std::fs::copy(&current_exe, &temp_exe)
                     .wrap_err("Copying nix-installer to tempdir")?;
                 let args = std::env::args();
                 let mut arg_vec_cstring = vec![];
@@ -108,9 +106,8 @@ impl CommandExecute for Uninstall {
             }
         }
 
-        let install_receipt_string = tokio::fs::read_to_string(receipt)
-            .await
-            .wrap_err("Reading receipt")?;
+        let install_receipt_string =
+            std::fs::read_to_string(receipt).wrap_err("Reading receipt")?;
 
         let mut plan: InstallPlan = match serde_json::from_str(&install_receipt_string) {
             Ok(plan) => plan,
@@ -153,7 +150,7 @@ impl CommandExecute for Uninstall {
             return Ok(ExitCode::FAILURE);
         }
 
-        if let Err(err) = plan.pre_uninstall_check().await {
+        if let Err(err) = plan.pre_uninstall_check() {
             if let Some(expected) = err.expected() {
                 eprintln!("{}", expected.red());
                 return Ok(ExitCode::FAILURE);
@@ -166,28 +163,22 @@ impl CommandExecute for Uninstall {
             loop {
                 match interaction::prompt(
                     plan.describe_uninstall(currently_explaining)
-                        .await
                         .map_err(|e| eyre!(e))?,
                     PromptChoice::Yes,
                     currently_explaining,
-                )
-                .await?
-                {
+                )? {
                     PromptChoice::Yes => break,
                     PromptChoice::Explain => currently_explaining = true,
-                    PromptChoice::No => {
-                        interaction::clean_exit_with_message(
-                            "Okay, not continuing with the uninstallation. Bye!",
-                        )
-                        .await
-                    },
+                    PromptChoice::No => interaction::clean_exit_with_message(
+                        "Okay, not continuing with the uninstallation. Bye!",
+                    ),
                 }
             }
         }
 
-        let (_tx, rx) = signal_channel().await?;
+        let cancel_signal = setup_signal_handler();
 
-        let res = plan.uninstall(rx).await;
+        let res = plan.uninstall(Some(cancel_signal));
         match res {
             Err(err @ NixInstallerError::ActionRevert(_)) => {
                 tracing::error!("Uninstallation complete, some errors encountered");

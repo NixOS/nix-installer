@@ -34,22 +34,18 @@ pub struct CreateNixTree {
 
 impl CreateNixTree {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         let mut create_directories = Vec::default();
         for path in PATHS {
             // We use `create_dir` over `create_dir_all` to ensure we always set permissions right
-            create_directories.push(
-                CreateDirectory::plan(path, None, None, 0o0755, true)
-                    .await
-                    .map_err(Self::error)?,
-            )
+            create_directories
+                .push(CreateDirectory::plan(path, None, None, 0o0755, true).map_err(Self::error)?)
         }
 
         Ok(Self { create_directories }.into())
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_nix_tree")]
 impl Action for CreateNixTree {
     fn action_tag() -> ActionTag {
@@ -84,13 +80,13 @@ impl Action for CreateNixTree {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         // Just do sequential since parallelizing this will have little benefit
         for create_directory in self.create_directories.iter_mut() {
-            create_directory.try_execute().await.map_err(Self::error)?;
+            create_directory.try_execute().map_err(Self::error)?;
         }
 
-        ensure_nix_var_ownership().await.map_err(Self::error)?;
+        ensure_nix_var_ownership().map_err(Self::error)?;
 
         Ok(())
     }
@@ -116,11 +112,11 @@ impl Action for CreateNixTree {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
         // Just do sequential since parallelizing this will have little benefit
         for create_directory in self.create_directories.iter_mut().rev() {
-            if let Err(err) = create_directory.try_revert().await {
+            if let Err(err) = create_directory.try_revert() {
                 errors.push(err);
             }
         }
@@ -144,7 +140,7 @@ impl Action for CreateNixTree {
 /// * /nix/var/nix/gcroots/per-user/*
 ///
 /// This function walks /nix/var and makes sure that is true.
-async fn ensure_nix_var_ownership() -> Result<(), ActionErrorKind> {
+fn ensure_nix_var_ownership() -> Result<(), ActionErrorKind> {
     let entryiter = walkdir::WalkDir::new("/nix/var")
         .follow_links(false)
         .same_file_system(true)

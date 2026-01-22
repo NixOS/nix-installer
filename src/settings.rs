@@ -201,7 +201,7 @@ pub(crate) fn default_nix_build_group_id() -> u32 {
 
 impl CommonSettings {
     /// The default settings for the given Architecture & Operating System
-    pub async fn default() -> Result<Self, InstallSettingsError> {
+    pub fn default() -> Result<Self, InstallSettingsError> {
         let nix_build_user_prefix;
 
         use target_lexicon::{Architecture, OperatingSystem};
@@ -306,18 +306,17 @@ impl CommonSettings {
     }
 }
 
-async fn linux_detect_systemd_started() -> bool {
+fn linux_detect_systemd_started() -> bool {
     use std::process::Stdio;
 
     let mut started = false;
     if std::path::Path::new("/run/systemd/system").exists() {
-        started = tokio::process::Command::new("systemctl")
+        started = std::process::Command::new("systemctl")
             .arg("status")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .await
             .ok()
             .map(|exit| exit.success())
             .unwrap_or(false)
@@ -359,17 +358,17 @@ pub struct InitSettings {
 
 impl InitSettings {
     /// The default settings for the given Architecture & Operating System
-    pub async fn default() -> Result<Self, InstallSettingsError> {
+    pub fn default() -> Result<Self, InstallSettingsError> {
         use target_lexicon::{Architecture, OperatingSystem};
         let (init, start_daemon) = match (Architecture::host(), OperatingSystem::host()) {
             (Architecture::X86_64, OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => (InitSystem::Launchd, true),
@@ -442,7 +441,7 @@ pub enum UrlOrPathError {
     #[error("The specified path `{0}` does not exist")]
     PathDoesNotExist(PathBuf),
     #[error("Error fetching URL `{0}`")]
-    Reqwest(Url, #[source] reqwest::Error),
+    Reqwest(Url, #[source] ureq::Error),
     #[error("I/O error when accessing `{0}`")]
     Io(PathBuf, #[source] std::io::Error),
 }

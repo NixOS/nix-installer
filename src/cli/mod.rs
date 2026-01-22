@@ -9,15 +9,23 @@ pub(crate) mod subcommand;
 use clap::Parser;
 use eyre::WrapErr;
 use owo_colors::OwoColorize;
-use std::{ffi::CString, path::PathBuf, process::ExitCode};
-use tokio::sync::broadcast::{Receiver, Sender};
+use std::{
+    ffi::CString,
+    path::PathBuf,
+    process::ExitCode,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use url::Url;
 
 use self::subcommand::NixInstallerSubcommand;
 
-#[async_trait::async_trait]
+pub use crate::plan::{cancel_signal, CancelSignal};
+
 pub trait CommandExecute {
-    async fn execute(self) -> eyre::Result<ExitCode>;
+    fn execute(self) -> eyre::Result<ExitCode>;
 }
 
 /**
@@ -49,19 +57,18 @@ pub struct NixInstallerCli {
     pub subcommand: NixInstallerSubcommand,
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for NixInstallerCli {
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         let is_install_subcommand = matches!(self.subcommand, NixInstallerSubcommand::Install(_));
 
         let ret = match self.subcommand {
-            NixInstallerSubcommand::Plan(plan) => plan.execute().await,
-            NixInstallerSubcommand::SelfTest(self_test) => self_test.execute().await,
-            NixInstallerSubcommand::Install(install) => install.execute().await,
-            NixInstallerSubcommand::Repair(repair) => repair.execute().await,
-            NixInstallerSubcommand::Uninstall(revert) => revert.execute().await,
-            NixInstallerSubcommand::SplitReceipt(split_receipt) => split_receipt.execute().await,
+            NixInstallerSubcommand::Plan(plan) => plan.execute(),
+            NixInstallerSubcommand::SelfTest(self_test) => self_test.execute(),
+            NixInstallerSubcommand::Install(install) => install.execute(),
+            NixInstallerSubcommand::Repair(repair) => repair.execute(),
+            NixInstallerSubcommand::Uninstall(revert) => revert.execute(),
+            NixInstallerSubcommand::SplitReceipt(split_receipt) => split_receipt.execute(),
         };
 
         let maybe_cancelled = ret.as_ref().err().and_then(|err| {
@@ -103,33 +110,18 @@ impl CommandExecute for NixInstallerCli {
     }
 }
 
-pub(crate) async fn signal_channel() -> eyre::Result<(Sender<()>, Receiver<()>)> {
-    let (sender, receiver) = tokio::sync::broadcast::channel(100);
+/// Set up a signal handler that sets the cancel flag when SIGINT or SIGTERM is received
+pub fn setup_signal_handler() -> CancelSignal {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_clone = cancel.clone();
 
-    let sender_cloned = sender.clone();
-    let _guard = tokio::spawn(async move {
-        let mut ctrl_c = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-            .expect("failed to install signal handler");
+    ctrlc::set_handler(move || {
+        tracing::warn!("Received interrupt signal");
+        cancel_clone.store(true, Ordering::Relaxed);
+    })
+    .expect("Error setting signal handler");
 
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("failed to install signal handler");
-
-        loop {
-            tokio::select! {
-                    Some(()) = ctrl_c.recv() => {
-                        tracing::warn!("Got SIGINT signal");
-                        sender_cloned.send(()).ok();
-                    },
-                    Some(()) = terminate.recv() => {
-                        tracing::warn!("Got SIGTERM signal");
-                        sender_cloned.send(()).ok();
-                    },
-            }
-        }
-    });
-
-    Ok((sender, receiver))
+    cancel
 }
 
 pub fn is_root() -> bool {

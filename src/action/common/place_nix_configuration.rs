@@ -40,29 +40,27 @@ pub struct PlaceNixConfiguration {
 
 impl PlaceNixConfiguration {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         nix_build_group_name: String,
         proxy: Option<Url>,
         ssl_cert_file: Option<PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
         force: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
-        let extra_conf = Self::parse_extra_conf(proxy, ssl_cert_file.as_ref(), extra_conf).await?;
+        let extra_conf = Self::parse_extra_conf(proxy, ssl_cert_file.as_ref(), extra_conf)?;
 
         let configured_ssl_cert_file = ssl_cert_file;
 
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
-        let standard_nix_config = Some(Self::setup_standard_config(maybe_trusted_users).await?);
+        let standard_nix_config = Some(Self::setup_standard_config(maybe_trusted_users)?);
 
         let custom_nix_config = Self::setup_extra_config(
             extra_conf,
             nix_build_group_name,
             configured_ssl_cert_file.as_ref(),
-        )
-        .await?;
+        )?;
 
         let create_directory = CreateDirectory::plan(NIX_CONF_FOLDER, None, None, 0o0755, force)
-            .await
             .map_err(Self::error)?;
 
         let create_or_merge_standard_nix_config =
@@ -74,7 +72,6 @@ impl PlaceNixConfiguration {
                         NIX_CONFIG_HEADER.to_string(),
                         Some(NIX_CONFIG_FOOTER.to_string()),
                     )
-                    .await
                     .map_err(Self::error)?,
                 )
             } else {
@@ -87,7 +84,6 @@ impl PlaceNixConfiguration {
             CUSTOM_NIX_CONFIG_HEADER.to_string(),
             None,
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(Self {
@@ -98,7 +94,7 @@ impl PlaceNixConfiguration {
         .into())
     }
 
-    async fn setup_standard_config(
+    fn setup_standard_config(
         maybe_trusted_users: Option<&String>,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let mut nix_config = nix_config_parser::NixConfig::new();
@@ -150,7 +146,7 @@ impl PlaceNixConfiguration {
         Ok(nix_config)
     }
 
-    async fn parse_extra_conf(
+    fn parse_extra_conf(
         proxy: Option<Url>,
         ssl_cert_file: Option<&PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
@@ -160,46 +156,52 @@ impl PlaceNixConfiguration {
             let buf = match &extra {
                 UrlOrPathOrString::Url(url) => match url.scheme() {
                     "https" | "http" => {
-                        let mut buildable_client = reqwest::Client::builder();
+                        use std::io::Read;
+                        let mut agent_builder = ureq::AgentBuilder::new();
+
                         if let Some(proxy) = &proxy {
-                            buildable_client = buildable_client.proxy(
-                                reqwest::Proxy::all(proxy.clone())
-                                    .map_err(ActionErrorKind::Reqwest)
-                                    .map_err(Self::error)?,
-                            )
+                            let proxy = ureq::Proxy::new(proxy.as_str())
+                                .map_err(|e| ActionErrorKind::Ureq(Box::new(e.into())))
+                                .map_err(Self::error)?;
+                            agent_builder = agent_builder.proxy(proxy);
                         }
+
                         if let Some(ssl_cert_file) = &ssl_cert_file {
-                            let ssl_cert =
-                                parse_ssl_cert(ssl_cert_file).await.map_err(Self::error)?;
-                            buildable_client = buildable_client.add_root_certificate(ssl_cert);
+                            let cert = parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
+                            agent_builder = agent_builder.tls_config(std::sync::Arc::new(
+                                rustls::ClientConfig::builder()
+                                    .with_root_certificates({
+                                        let mut roots = rustls::RootCertStore::empty();
+                                        roots.add(cert).map_err(|e| {
+                                            Self::error(ActionErrorKind::Custom(Box::new(e)))
+                                        })?;
+                                        roots
+                                    })
+                                    .with_no_client_auth(),
+                            ));
                         }
-                        let client = buildable_client
-                            .build()
-                            .map_err(ActionErrorKind::Reqwest)
+
+                        let agent = agent_builder.build();
+                        let response = agent
+                            .get(url.as_str())
+                            .call()
+                            .map_err(|e| ActionErrorKind::Ureq(Box::new(e)))
                             .map_err(Self::error)?;
-                        let req = client
-                            .get(url.clone())
-                            .build()
-                            .map_err(ActionErrorKind::Reqwest)
+
+                        let mut buf = String::new();
+                        response
+                            .into_reader()
+                            .read_to_string(&mut buf)
+                            .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.as_str()), e))
                             .map_err(Self::error)?;
-                        let res = client
-                            .execute(req)
-                            .await
-                            .map_err(ActionErrorKind::Reqwest)
-                            .map_err(Self::error)?;
-                        res.text()
-                            .await
-                            .map_err(ActionErrorKind::Reqwest)
-                            .map_err(Self::error)?
+                        buf
                     },
-                    "file" => tokio::fs::read_to_string(url.path())
-                        .await
+                    "file" => std::fs::read_to_string(url.path())
                         .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.path()), e))
                         .map_err(Self::error)?,
                     _ => return Err(Self::error(ActionErrorKind::UnknownUrlScheme)),
                 },
-                UrlOrPathOrString::Path(path) => tokio::fs::read_to_string(path)
-                    .await
+                UrlOrPathOrString::Path(path) => std::fs::read_to_string(path)
                     .map_err(|e| ActionErrorKind::Read(PathBuf::from(path), e))
                     .map_err(Self::error)?,
                 UrlOrPathOrString::String(string) => string.clone(),
@@ -215,7 +217,7 @@ impl PlaceNixConfiguration {
         Ok(nix_config)
     }
 
-    async fn setup_extra_config(
+    fn setup_extra_config(
         mut extra_conf: nix_config_parser::NixConfig,
         nix_build_group_name: String,
         ssl_cert_file: Option<&PathBuf>,
@@ -262,7 +264,6 @@ impl PlaceNixConfiguration {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "place_nix_configuration")]
 impl Action for PlaceNixConfiguration {
     fn action_tag() -> ActionTag {
@@ -302,18 +303,14 @@ impl Action for PlaceNixConfiguration {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
-        self.create_directory
-            .try_execute()
-            .await
-            .map_err(Self::error)?;
+    fn execute(&mut self) -> Result<(), ActionError> {
+        self.create_directory.try_execute().map_err(Self::error)?;
         if let Some(ref mut standard_config) = self.create_or_merge_standard_nix_config {
-            standard_config.try_execute().await.map_err(Self::error)?;
+            standard_config.try_execute().map_err(Self::error)?;
         }
 
         self.create_or_merge_custom_nix_config
             .try_execute()
-            .await
             .map_err(Self::error)?;
 
         Ok(())
@@ -330,19 +327,19 @@ impl Action for PlaceNixConfiguration {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
-        if let Err(err) = self.create_or_merge_custom_nix_config.try_revert().await {
+        if let Err(err) = self.create_or_merge_custom_nix_config.try_revert() {
             errors.push(err);
         }
 
         if let Some(ref mut standard_config) = self.create_or_merge_standard_nix_config {
-            if let Err(err) = standard_config.try_revert().await {
+            if let Err(err) = standard_config.try_revert() {
                 errors.push(err);
             }
         }
 
-        if let Err(err) = self.create_directory.try_revert().await {
+        if let Err(err) = self.create_directory.try_revert() {
             errors.push(err);
         }
 
@@ -363,8 +360,8 @@ impl Action for PlaceNixConfiguration {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn extra_trusted_cache() -> eyre::Result<()> {
+    #[test]
+    fn extra_trusted_cache() -> eyre::Result<()> {
         let extra_conf = PlaceNixConfiguration::parse_extra_conf(
             None,
             None,
@@ -372,12 +369,10 @@ mod tests {
                 UrlOrPathOrString::String(String::from("extra-trusted-substituters = barfoo")),
                 UrlOrPathOrString::String(String::from("extra-trusted-public-keys = foobar")),
             ],
-        )
-        .await?;
+        )?;
 
         let nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)
-                .await?;
+            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
 
         assert!(
             nix_config
@@ -400,8 +395,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn experimental_features() -> eyre::Result<()> {
+    #[test]
+    fn experimental_features() -> eyre::Result<()> {
         let nix_conf_dir = tempfile::tempdir()?;
         let nix_conf_path = nix_conf_dir.path().join("nix.conf");
         let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
@@ -412,13 +407,11 @@ mod tests {
             vec![UrlOrPathOrString::String(format!(
                 "{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"
             ))],
-        )
-        .await?;
+        )?;
 
-        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None).await?;
+        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None)?;
         let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)
-                .await?;
+            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
         dbg!(&custom_nix_config);
         dbg!(custom_nix_config.settings());
         dbg!(custom_nix_config
@@ -457,7 +450,6 @@ mod tests {
                     NIX_CONFIG_HEADER.to_string(),
                     Some(NIX_CONFIG_FOOTER.to_string()),
                 )
-                .await
                 .map_err(PlaceNixConfiguration::error)?,
             ),
             create_or_merge_custom_nix_config: CreateOrMergeNixConfig::plan(
@@ -466,18 +458,14 @@ mod tests {
                 CUSTOM_NIX_CONFIG_HEADER.to_string(),
                 None,
             )
-            .await
             .map_err(PlaceNixConfiguration::error)?,
         });
 
         place_nix_configuration
             .try_execute()
-            .await
             .expect("place nix config should succeed");
 
-        let custom_conf = tokio::fs::read_to_string(nix_custom_conf_path)
-            .await
-            .unwrap();
+        let custom_conf = std::fs::read_to_string(nix_custom_conf_path).unwrap();
         assert!(
             custom_conf.contains(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
                 && custom_conf.contains("foobar"),
@@ -487,8 +475,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn extra_trusted_users() -> eyre::Result<()> {
+    #[test]
+    fn extra_trusted_users() -> eyre::Result<()> {
         let nix_conf_dir = tempfile::tempdir()?;
         let nix_conf_path = nix_conf_dir.path().join("nix.conf");
         let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
@@ -499,16 +487,14 @@ mod tests {
             vec![UrlOrPathOrString::String(String::from(
                 "trusted-users = bob alice",
             ))],
-        )
-        .await?;
+        )?;
 
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
 
         let standard_nix_config =
-            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users).await?;
+            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users)?;
         let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)
-                .await?;
+            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
 
         assert!(
             custom_nix_config
@@ -543,7 +529,6 @@ mod tests {
                     NIX_CONFIG_HEADER.to_string(),
                     Some(NIX_CONFIG_FOOTER.to_string()),
                 )
-                .await
                 .map_err(PlaceNixConfiguration::error)?,
             ),
             create_or_merge_custom_nix_config: CreateOrMergeNixConfig::plan(
@@ -552,21 +537,17 @@ mod tests {
                 CUSTOM_NIX_CONFIG_HEADER.to_string(),
                 None,
             )
-            .await
             .map_err(PlaceNixConfiguration::error)?,
         });
 
         place_nix_configuration
             .try_execute()
-            .await
             .expect("place nix config should succeed");
 
-        let standard_conf = tokio::fs::read_to_string(nix_conf_path).await.unwrap();
+        let standard_conf = std::fs::read_to_string(nix_conf_path).unwrap();
         assert!(standard_conf.contains("trusted-users"), "trusted-users setting should exist in standard conf so that we don't break cachix users");
 
-        let custom_conf = tokio::fs::read_to_string(nix_custom_conf_path)
-            .await
-            .unwrap();
+        let custom_conf = std::fs::read_to_string(nix_custom_conf_path).unwrap();
         assert!(
             custom_conf.contains("trusted-users"),
             "trusted-user setting should exist in custom conf as well"

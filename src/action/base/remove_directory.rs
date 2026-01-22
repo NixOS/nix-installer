@@ -16,7 +16,7 @@ pub struct RemoveDirectory {
 
 impl RemoveDirectory {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
         let path = path.as_ref().to_path_buf();
 
         Ok(StatefulAction {
@@ -26,7 +26,6 @@ impl RemoveDirectory {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "remove_directory")]
 impl Action for RemoveDirectory {
     fn action_tag() -> crate::action::ActionTag {
@@ -49,7 +48,7 @@ impl Action for RemoveDirectory {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         if self.path.exists() {
             if !self.path.is_dir() {
                 return Err(Self::error(ActionErrorKind::PathWasNotDirectory(
@@ -60,7 +59,6 @@ impl Action for RemoveDirectory {
             // At this point, we know the path exists, but just in case it was deleted between then
             // and now, we still ignore the case where it no longer exists.
             crate::util::remove_dir_all(&self.path, OnMissing::Ignore)
-                .await
                 .map_err(|e| Self::error(ActionErrorKind::Remove(self.path.clone(), e)))?;
         } else {
             tracing::debug!("Directory `{}` not present, skipping", self.path.display(),);
@@ -74,7 +72,7 @@ impl Action for RemoveDirectory {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         Ok(())
     }
 }

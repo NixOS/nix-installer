@@ -1,6 +1,6 @@
 use nix::unistd::User;
+use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tokio::process::Command;
 use tracing::{span, Span};
 
 use crate::action::base::create_user::delete_user_macos;
@@ -20,7 +20,7 @@ pub struct DeleteUser {
 
 impl DeleteUser {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(name: String) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(name: String) -> Result<StatefulAction<Self>, ActionError> {
         let this = Self { name: name.clone() };
 
         match OperatingSystem::host() {
@@ -46,7 +46,6 @@ impl DeleteUser {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "delete_user")]
 impl Action for DeleteUser {
     fn action_tag() -> ActionTag {
@@ -73,29 +72,25 @@ impl Action for DeleteUser {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
-                delete_user_macos(&self.name).await.map_err(Self::error)?;
+                delete_user_macos(&self.name).map_err(Self::error)?;
             },
             _ => {
                 if which::which("userdel").is_ok() {
                     execute_command(
                         Command::new("userdel")
-                            .process_group(0)
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("deluser").is_ok() {
                     execute_command(
                         Command::new("deluser")
-                            .process_group(0)
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(ActionErrorKind::MissingUserDeletionCommand));
@@ -111,7 +106,7 @@ impl Action for DeleteUser {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         Ok(())
     }
 }

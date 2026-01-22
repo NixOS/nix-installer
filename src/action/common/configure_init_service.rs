@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::macos::DARWIN_LAUNCHD_DOMAIN;
@@ -29,19 +29,18 @@ pub enum UnitSrc {
 }
 
 impl UnitSrc {
-    pub async fn place(&self, dest: &Path) -> Result<(), ActionErrorKind> {
+    pub fn place(&self, dest: &Path) -> Result<(), ActionErrorKind> {
         match self {
             UnitSrc::Path(src) => {
                 tracing::trace!(src = %src.display(), dest = %dest.display(), "Symlinking");
-                tokio::fs::symlink(src, dest).await.map_err(|e| {
+                std::os::unix::fs::symlink(src, dest).map_err(|e| {
                     ActionErrorKind::Symlink(PathBuf::from(src), dest.to_path_buf(), e)
                 })?;
             },
             UnitSrc::Literal(content) => {
                 tracing::trace!(src = %content, dest = %dest.display(), "Writing");
 
-                tokio::fs::write(&dest, content)
-                    .await
+                std::fs::write(&dest, content)
                     .map_err(|e| ActionErrorKind::Write(dest.to_path_buf(), e))?;
             },
         }
@@ -66,7 +65,7 @@ pub struct ConfigureInitService {
 }
 
 impl ConfigureInitService {
-    pub(crate) async fn check_if_systemd_unit_exists(
+    pub(crate) fn check_if_systemd_unit_exists(
         src: &UnitSrc,
         dest: &Path,
     ) -> Result<(), ActionErrorKind> {
@@ -79,8 +78,7 @@ impl ConfigureInitService {
             match src {
                 UnitSrc::Path(unit_src) => {
                     if unit_dest.is_symlink() {
-                        let link_dest = tokio::fs::read_link(&unit_dest)
-                            .await
+                        let link_dest = std::fs::read_link(&unit_dest)
                             .map_err(|e| ActionErrorKind::ReadSymlink(unit_dest.clone(), e))?;
                         if link_dest != *unit_src {
                             return Err(ActionErrorKind::SymlinkExists(unit_dest));
@@ -93,8 +91,7 @@ impl ConfigureInitService {
                     if unit_dest.is_symlink() {
                         return Err(ActionErrorKind::FileExists(unit_dest));
                     } else {
-                        let actual_content = tokio::fs::read_to_string(&unit_dest)
-                            .await
+                        let actual_content = std::fs::read_to_string(&unit_dest)
                             .map_err(|e| ActionErrorKind::Read(unit_dest.clone(), e))?;
                         if *content != actual_content {
                             return Err(ActionErrorKind::DifferentContent(unit_dest));
@@ -113,7 +110,7 @@ impl ConfigureInitService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         init: InitSystem,
         start_daemon: bool,
         service_src: Option<UnitSrc>,
@@ -157,7 +154,6 @@ impl ConfigureInitService {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "configure_init_service")]
 impl Action for ConfigureInitService {
     fn action_tag() -> ActionTag {
@@ -268,7 +264,7 @@ impl Action for ConfigureInitService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             init,
             start_daemon,
@@ -292,7 +288,7 @@ impl Action for ConfigureInitService {
                     match service_src {
                         UnitSrc::Path(src) => {
                             tracing::trace!(src = %src.display(), dest = %service_dest.display(), "Copying");
-                            tokio::fs::copy(&src, service_dest).await.map_err(|e| {
+                            std::fs::copy(&src, service_dest).map_err(|e| {
                                 Self::error(ActionErrorKind::Copy(
                                     src.clone(),
                                     PathBuf::from(service_dest),
@@ -303,8 +299,7 @@ impl Action for ConfigureInitService {
                         UnitSrc::Literal(content) => {
                             tracing::trace!(src = %content, dest = %service_dest.display(), "Writing");
 
-                            tokio::fs::write(&service_dest, content)
-                                .await
+                            std::fs::write(&service_dest, content)
                                 .map_err(|e| ActionErrorKind::Write(service_dest.clone(), e))
                                 .map_err(Self::error)?;
                         },
@@ -312,28 +307,22 @@ impl Action for ConfigureInitService {
                 }
 
                 crate::action::macos::retry_bootstrap(domain, service, service_dest)
-                    .await
                     .map_err(Self::error)?;
 
                 let is_disabled = crate::action::macos::service_is_disabled(domain, service)
-                    .await
                     .map_err(Self::error)?;
                 if is_disabled {
                     execute_command(
                         Command::new("launchctl")
-                            .process_group(0)
                             .arg("enable")
                             .arg(format!("{domain}/{service}"))
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 }
 
                 if *start_daemon {
-                    crate::action::macos::retry_kickstart(domain, service)
-                        .await
-                        .map_err(Self::error)?;
+                    crate::action::macos::retry_kickstart(domain, service).map_err(Self::error)?;
                 }
             },
             InitSystem::Systemd => {
@@ -344,12 +333,12 @@ impl Action for ConfigureInitService {
                 // The goal state is the `socket` enabled and active, the service not enabled and stopped (it activates via socket activation)
                 let mut any_socket_was_active = false;
                 for SocketFile { name, .. } in socket_files.iter() {
-                    let is_active = is_active(name).await.map_err(Self::error)?;
+                    let is_active = is_active(name).map_err(Self::error)?;
 
-                    if is_enabled(name).await.map_err(Self::error)? {
-                        disable(name, is_active).await.map_err(Self::error)?;
+                    if is_enabled(name).map_err(Self::error)? {
+                        disable(name, is_active).map_err(Self::error)?;
                     } else if is_active {
-                        stop(name).await.map_err(Self::error)?;
+                        stop(name).map_err(Self::error)?;
                     };
 
                     if is_active {
@@ -358,24 +347,18 @@ impl Action for ConfigureInitService {
                 }
 
                 {
-                    let is_active = is_active("nix-daemon.service").await.map_err(Self::error)?;
+                    let is_active = is_active("nix-daemon.service").map_err(Self::error)?;
 
-                    if is_enabled("nix-daemon.service")
-                        .await
-                        .map_err(Self::error)?
-                    {
-                        disable("nix-daemon.service", is_active)
-                            .await
-                            .map_err(Self::error)?;
+                    if is_enabled("nix-daemon.service").map_err(Self::error)? {
+                        disable("nix-daemon.service", is_active).map_err(Self::error)?;
                     } else if is_active {
-                        stop("nix-daemon.service").await.map_err(Self::error)?;
+                        stop("nix-daemon.service").map_err(Self::error)?;
                     };
                 }
 
                 if !Path::new(TMPFILES_DEST).exists() {
                     tracing::trace!(src = TMPFILES_SRC, dest = TMPFILES_DEST, "Symlinking");
-                    tokio::fs::symlink(TMPFILES_SRC, TMPFILES_DEST)
-                        .await
+                    std::os::unix::fs::symlink(TMPFILES_SRC, TMPFILES_DEST)
                         .map_err(|e| {
                             ActionErrorKind::Symlink(
                                 PathBuf::from(TMPFILES_SRC),
@@ -388,12 +371,10 @@ impl Action for ConfigureInitService {
 
                 execute_command(
                     Command::new("systemd-tmpfiles")
-                        .process_group(0)
                         .arg("--create")
                         .arg("--prefix=/nix/var/nix")
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
 
                 // TODO: once we have a way to communicate interaction between the library and the
@@ -401,31 +382,25 @@ impl Action for ConfigureInitService {
 
                 if let Some(service_src) = service_src.as_ref() {
                     Self::check_if_systemd_unit_exists(service_src, service_dest)
-                        .await
                         .map_err(Self::error)?;
 
                     crate::util::remove_file(service_dest, OnMissing::Ignore)
-                        .await
                         .map_err(|e| ActionErrorKind::Remove(service_dest.into(), e))
                         .map_err(Self::error)?;
 
-                    service_src.place(service_dest).await.map_err(Self::error)?;
+                    service_src.place(service_dest).map_err(Self::error)?;
                 }
 
                 for SocketFile { src, dest, .. } in socket_files.iter() {
-                    Self::check_if_systemd_unit_exists(src, dest)
-                        .await
-                        .map_err(Self::error)?;
+                    Self::check_if_systemd_unit_exists(src, dest).map_err(Self::error)?;
                     crate::util::remove_file(dest, OnMissing::Ignore)
-                        .await
                         .map_err(|e| ActionErrorKind::Remove(dest.into(), e))
                         .map_err(Self::error)?;
 
                     match src {
                         UnitSrc::Path(src) => {
                             tracing::trace!(src = %src.display(), dest = %dest.display(), "Symlinking");
-                            tokio::fs::symlink(src, dest)
-                                .await
+                            std::os::unix::fs::symlink(src, dest)
                                 .map_err(|e| {
                                     ActionErrorKind::Symlink(
                                         PathBuf::from(src),
@@ -438,8 +413,7 @@ impl Action for ConfigureInitService {
                         UnitSrc::Literal(content) => {
                             tracing::trace!(src = %content, dest = %dest.display(), "Writing");
 
-                            tokio::fs::write(&dest, content)
-                                .await
+                            std::fs::write(&dest, content)
                                 .map_err(|e| ActionErrorKind::Write(dest.clone(), e))
                                 .map_err(Self::error)?;
                         },
@@ -449,11 +423,9 @@ impl Action for ConfigureInitService {
                 if *start_daemon {
                     execute_command(
                         Command::new("systemctl")
-                            .process_group(0)
                             .arg("daemon-reload")
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 }
 
@@ -470,11 +442,10 @@ impl Action for ConfigureInitService {
                             // daemon.socket` to fail with "Failed to execute operation: Too many
                             // levels of symbolic links"
                             enable(path.display().to_string().as_ref(), enable_now)
-                                .await
                                 .map_err(Self::error)?;
                         },
                         UnitSrc::Literal(_) => {
-                            enable(name, enable_now).await.map_err(Self::error)?;
+                            enable(name, enable_now).map_err(Self::error)?;
                         },
                     }
                 }
@@ -521,7 +492,7 @@ impl Action for ConfigureInitService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
         match self.init {
@@ -532,7 +503,7 @@ impl Action for ConfigureInitService {
                     .expect("service_name should be set for launchd");
 
                 if let Err(e) =
-                    crate::action::macos::retry_bootout(DARWIN_LAUNCHD_DOMAIN, service_name).await
+                    crate::action::macos::retry_bootout(DARWIN_LAUNCHD_DOMAIN, service_name)
                 {
                     errors.push(e);
                 }
@@ -542,17 +513,15 @@ impl Action for ConfigureInitService {
                     tracing::trace!(attempt, "Checking to see if the daemon is down yet");
                     if execute_command(
                         Command::new("launchctl")
-                            .process_group(0)
                             .arg("print")
                             .arg([DARWIN_LAUNCHD_DOMAIN, service_name].join("/")),
                     )
-                    .await
                     .is_err()
                     {
                         tracing::trace!(attempt, "Daemon is down");
                         break;
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             },
             InitSystem::Systemd => {
@@ -560,18 +529,15 @@ impl Action for ConfigureInitService {
 
                 // These have to fail fast.
                 for SocketFile { name, .. } in self.socket_files.iter() {
-                    let socket_is_active = is_active(name).await.map_err(Self::error)?;
-                    let socket_is_enabled = is_enabled(name).await.map_err(Self::error)?;
+                    let socket_is_active = is_active(name).map_err(Self::error)?;
+                    let socket_is_enabled = is_enabled(name).map_err(Self::error)?;
 
                     if socket_is_active {
                         if let Err(err) = execute_command(
                             Command::new("systemctl")
-                                .process_group(0)
                                 .args(["stop", name])
                                 .stdin(std::process::Stdio::null()),
-                        )
-                        .await
-                        {
+                        ) {
                             errors.push(err);
                         }
                     }
@@ -579,31 +545,22 @@ impl Action for ConfigureInitService {
                     if socket_is_enabled {
                         if let Err(err) = execute_command(
                             Command::new("systemctl")
-                                .process_group(0)
                                 .args(["disable", name])
                                 .stdin(std::process::Stdio::null()),
-                        )
-                        .await
-                        {
+                        ) {
                             errors.push(err);
                         }
                     }
                 }
-                let service_is_active =
-                    is_active("nix-daemon.service").await.map_err(Self::error)?;
-                let service_is_enabled = is_enabled("nix-daemon.service")
-                    .await
-                    .map_err(Self::error)?;
+                let service_is_active = is_active("nix-daemon.service").map_err(Self::error)?;
+                let service_is_enabled = is_enabled("nix-daemon.service").map_err(Self::error)?;
 
                 if service_is_active {
                     if let Err(err) = execute_command(
                         Command::new("systemctl")
-                            .process_group(0)
                             .args(["stop", "nix-daemon.service"])
                             .stdin(std::process::Stdio::null()),
-                    )
-                    .await
-                    {
+                    ) {
                         errors.push(err);
                     }
                 }
@@ -611,31 +568,24 @@ impl Action for ConfigureInitService {
                 if service_is_enabled {
                     if let Err(err) = execute_command(
                         Command::new("systemctl")
-                            .process_group(0)
                             .args(["disable", "nix-daemon.service"])
                             .stdin(std::process::Stdio::null()),
-                    )
-                    .await
-                    {
+                    ) {
                         errors.push(err);
                     }
                 }
 
                 if let Err(err) = execute_command(
                     Command::new("systemd-tmpfiles")
-                        .process_group(0)
                         .arg("--remove")
                         .arg("--prefix=/nix/var/nix")
                         .stdin(std::process::Stdio::null()),
-                )
-                .await
-                {
+                ) {
                     errors.push(err);
                 }
 
                 if let Err(err) =
                     crate::util::remove_file(Path::new(TMPFILES_DEST), OnMissing::Ignore)
-                        .await
                         .map_err(|e| ActionErrorKind::Remove(PathBuf::from(TMPFILES_DEST), e))
                 {
                     errors.push(err);
@@ -643,12 +593,9 @@ impl Action for ConfigureInitService {
 
                 if let Err(err) = execute_command(
                     Command::new("systemctl")
-                        .process_group(0)
                         .arg("daemon-reload")
                         .stdin(std::process::Stdio::null()),
-                )
-                .await
-                {
+                ) {
                     errors.push(err);
                 }
             },
@@ -659,7 +606,6 @@ impl Action for ConfigureInitService {
 
         if let Some(dest) = &self.service_dest {
             if let Err(err) = crate::util::remove_file(dest, OnMissing::Ignore)
-                .await
                 .map_err(|e| ActionErrorKind::Remove(PathBuf::from(dest), e))
             {
                 errors.push(err);
@@ -668,7 +614,6 @@ impl Action for ConfigureInitService {
 
         for socket in self.socket_files.iter() {
             if let Err(err) = crate::util::remove_file(&socket.dest, OnMissing::Ignore)
-                .await
                 .map_err(|e| ActionErrorKind::Remove(socket.dest.to_path_buf(), e))
             {
                 errors.push(err);
@@ -697,13 +642,12 @@ pub enum ConfigureNixDaemonServiceError {
     InitNotSupported,
 }
 
-async fn stop(unit: &str) -> Result<(), ActionErrorKind> {
+fn stop(unit: &str) -> Result<(), ActionErrorKind> {
     let mut command = Command::new("systemctl");
     command.arg("stop");
     command.arg(unit);
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     match output.status.success() {
         true => {
@@ -714,7 +658,7 @@ async fn stop(unit: &str) -> Result<(), ActionErrorKind> {
     }
 }
 
-async fn enable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
+fn enable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     let mut command = Command::new("systemctl");
     command.arg("enable");
     command.arg(unit);
@@ -723,7 +667,6 @@ async fn enable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     }
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     match output.status.success() {
         true => {
@@ -734,7 +677,7 @@ async fn enable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     }
 }
 
-async fn disable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
+fn disable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     let mut command = Command::new("systemctl");
     command.arg("disable");
     command.arg(unit);
@@ -743,7 +686,6 @@ async fn disable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     }
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     match output.status.success() {
         true => {
@@ -754,13 +696,12 @@ async fn disable(unit: &str, now: bool) -> Result<(), ActionErrorKind> {
     }
 }
 
-async fn is_active(unit: &str) -> Result<bool, ActionErrorKind> {
+fn is_active(unit: &str) -> Result<bool, ActionErrorKind> {
     let mut command = Command::new("systemctl");
     command.arg("is-active");
     command.arg(unit);
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     if String::from_utf8(output.stdout)?.starts_with("active") {
         tracing::trace!(%unit, "Is active");
@@ -771,13 +712,12 @@ async fn is_active(unit: &str) -> Result<bool, ActionErrorKind> {
     }
 }
 
-async fn is_enabled(unit: &str) -> Result<bool, ActionErrorKind> {
+fn is_enabled(unit: &str) -> Result<bool, ActionErrorKind> {
     let mut command = Command::new("systemctl");
     command.arg("is-enabled");
     command.arg(unit);
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     let stdout = String::from_utf8(output.stdout)?;
     if stdout.starts_with("enabled") || stdout.starts_with("linked") {

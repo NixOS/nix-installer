@@ -1,3 +1,5 @@
+use std::io::Write;
+use std::process::Command;
 use std::time::Duration;
 
 use crate::{
@@ -13,7 +15,6 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::{io::AsyncWriteExt as _, process::Command};
 use tracing::{span, Span};
 
 use super::{CreateApfsVolume, KEYCHAIN_NIX_STORE_SERVICE};
@@ -30,7 +31,7 @@ pub struct EncryptApfsVolume {
 
 impl EncryptApfsVolume {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         disk: impl AsRef<Path>,
         name: impl AsRef<str>,
         planned_create_apfs_volume: &StatefulAction<CreateApfsVolume>,
@@ -47,13 +48,11 @@ impl EncryptApfsVolume {
         command.arg(format!("{} encryption password", disk.display()));
         command.arg("-D");
         command.arg("Encrypted volume password");
-        command.process_group(0);
         command.stdin(Stdio::null());
         command.stdout(Stdio::null());
         command.stderr(Stdio::null());
         if command
             .status()
-            .await
             .map_err(|e| Self::error(ActionErrorKind::command(&command, e)))?
             .success()
         {
@@ -76,7 +75,6 @@ impl EncryptApfsVolume {
 
             let output =
                 execute_command(Command::new("/usr/sbin/diskutil").args(["info", "-plist", &name]))
-                    .await
                     .map_err(Self::error)?;
 
             let parsed: DiskUtilDiskInfoOutput =
@@ -94,7 +92,6 @@ impl EncryptApfsVolume {
         // Ensure if the disk already exists, that it's encrypted
         let output =
             execute_command(Command::new("/usr/sbin/diskutil").args(["apfs", "list", "-plist"]))
-                .await
                 .map_err(Self::error)?;
 
         let parsed: DiskUtilApfsListOutput =
@@ -111,7 +108,6 @@ impl EncryptApfsVolume {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "encrypt_apfs_volume")]
 impl Action for EncryptApfsVolume {
     fn action_tag() -> ActionTag {
@@ -140,7 +136,7 @@ impl Action for EncryptApfsVolume {
     #[tracing::instrument(level = "debug", skip_all, fields(
         disk = %self.disk.display(),
     ))]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         // Generate a random password.
         let password: String = {
             const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
@@ -162,14 +158,12 @@ impl Action for EncryptApfsVolume {
         let mut retry_tokens: usize = 60;
         loop {
             let mut command = Command::new("/usr/sbin/diskutil");
-            command.process_group(0);
             command.args(["mount", &self.name]);
             command.stdin(std::process::Stdio::null());
-            tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for volume mounting to succeed");
+            tracing::debug!(%retry_tokens, command = ?command, "Waiting for volume mounting to succeed");
 
             let output = command
                 .output()
-                .await
                 .map_err(|e| ActionErrorKind::command(&command, e))
                 .map_err(Self::error)?;
 
@@ -183,12 +177,12 @@ impl Action for EncryptApfsVolume {
                 retry_tokens = retry_tokens.saturating_sub(1);
             }
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            std::thread::sleep(Duration::from_millis(500));
         }
 
         // Add the password to the user keychain so they can unlock it later.
         let mut cmd = Command::new("/usr/bin/security");
-        cmd.process_group(0).args([
+        cmd.args([
             "add-generic-password",
             "-a",
             self.name.as_str(),
@@ -214,12 +208,11 @@ impl Action for EncryptApfsVolume {
         cmd.arg("/Library/Keychains/System.keychain");
 
         // Add the password to the user keychain so they can unlock it later.
-        execute_command(&mut cmd).await.map_err(Self::error)?;
+        execute_command(&mut cmd).map_err(Self::error)?;
 
         // Encrypt the mounted volume
         {
             let mut command = Command::new("/usr/sbin/diskutil");
-            command.process_group(0);
             command.args([
                 "apfs",
                 "encryptVolume",
@@ -231,7 +224,7 @@ impl Action for EncryptApfsVolume {
             command.stdin(Stdio::piped());
             command.stdout(Stdio::piped());
             command.stderr(Stdio::piped());
-            tracing::trace!(command = ?command.as_std(), "Executing");
+            tracing::trace!(command = ?command, "Executing");
             let mut child = command
                 .spawn()
                 .map_err(|e| ActionErrorKind::command(&command, e))
@@ -242,23 +235,20 @@ impl Action for EncryptApfsVolume {
                 .expect("child should have had a stdin handle");
             stdin
                 .write_all(password.as_bytes())
-                .await
                 .map_err(|e| ActionErrorKind::Write("/dev/stdin".into(), e))
                 .map_err(Self::error)?;
             stdin
                 .write(b"\n")
-                .await
                 .map_err(|e| ActionErrorKind::Write("/dev/stdin".into(), e))
                 .map_err(Self::error)?;
             let output = child
                 .wait_with_output()
-                .await
                 .map_err(|e| ActionErrorKind::command(&command, e))
                 .map_err(Self::error)?;
             match output.status.success() {
                 true => {
                     tracing::trace!(
-                        command = ?command.as_std(),
+                        command = ?command,
                         stderr = %String::from_utf8_lossy(&output.stderr),
                         stdout = %String::from_utf8_lossy(&output.stdout),
                         "Command success"
@@ -272,12 +262,10 @@ impl Action for EncryptApfsVolume {
 
         execute_command(
             Command::new("/usr/sbin/diskutil")
-                .process_group(0)
                 .arg("unmount")
                 .arg("force")
                 .arg(&self.name),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())
@@ -296,12 +284,12 @@ impl Action for EncryptApfsVolume {
     #[tracing::instrument(level = "debug", skip_all, fields(
         disk = %self.disk.display(),
     ))]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let disk_str = self.disk.to_str().expect("Could not turn disk into string"); /* Should not reasonably ever fail */
 
         // TODO: This seems very rough and unsafe
         execute_command(
-            Command::new("/usr/bin/security").process_group(0).args([
+            Command::new("/usr/bin/security").args([
                 "delete-generic-password",
                 "-a",
                 self.name.as_str(),
@@ -318,7 +306,6 @@ impl Action for EncryptApfsVolume {
                 .as_str(),
             ]),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())

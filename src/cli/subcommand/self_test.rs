@@ -8,13 +8,10 @@ use crate::{cli::CommandExecute, NixInstallerError};
 #[derive(Debug, Parser)]
 pub struct SelfTest {}
 
-#[async_trait::async_trait]
 impl CommandExecute for SelfTest {
     #[tracing::instrument(level = "debug", skip_all, fields())]
-    async fn execute(self) -> eyre::Result<ExitCode> {
-        crate::self_test::self_test()
-            .await
-            .map_err(NixInstallerError::SelfTest)?;
+    fn execute(self) -> eyre::Result<ExitCode> {
+        crate::self_test::self_test().map_err(NixInstallerError::SelfTest)?;
 
         tracing::info!(
             shells = ?crate::self_test::Shell::discover()

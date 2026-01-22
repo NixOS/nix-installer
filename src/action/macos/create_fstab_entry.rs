@@ -25,12 +25,11 @@ pub struct CreateFstabEntry {
 
 impl CreateFstabEntry {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(apfs_volume_label: String) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(apfs_volume_label: String) -> Result<StatefulAction<Self>, ActionError> {
         Ok(StatefulAction::uncompleted(Self { apfs_volume_label }))
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_fstab_entry")]
 impl Action for CreateFstabEntry {
     fn action_tag() -> ActionTag {
@@ -58,12 +57,9 @@ impl Action for CreateFstabEntry {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let fstab_path = Path::new(FSTAB_PATH);
-        let uuid = match get_disk_info_for_label(&self.apfs_volume_label)
-            .await
-            .map_err(Self::error)?
-        {
+        let uuid = match get_disk_info_for_label(&self.apfs_volume_label).map_err(Self::error)? {
             Some(diskutil_info) => diskutil_info.volume_uuid,
             None => {
                 return Err(Self::error(CreateFstabEntryError::CannotDetermineUuid(
@@ -72,8 +68,7 @@ impl Action for CreateFstabEntry {
             },
         };
 
-        let fstab_buf = tokio::fs::read_to_string(FSTAB_PATH)
-            .await
+        let fstab_buf = std::fs::read_to_string(FSTAB_PATH)
             .or_else(|e| match e.kind() {
                 std::io::ErrorKind::NotFound => Ok(String::new()),
                 _ => Err(e),
@@ -106,9 +101,7 @@ impl Action for CreateFstabEntry {
 
         let updated_buf = current_fstab_lines.join("\n");
 
-        crate::util::write_atomic(fstab_path, &updated_buf)
-            .await
-            .map_err(Self::error)?;
+        crate::util::write_atomic(fstab_path, &updated_buf).map_err(Self::error)?;
         Ok(())
     }
 
@@ -124,11 +117,10 @@ impl Action for CreateFstabEntry {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let fstab_path = Path::new(FSTAB_PATH);
 
-        let fstab_buf = tokio::fs::read_to_string(FSTAB_PATH)
-            .await
+        let fstab_buf = std::fs::read_to_string(FSTAB_PATH)
             .or_else(|e| match e.kind() {
                 std::io::ErrorKind::NotFound => Ok(String::new()),
                 _ => Err(e),
@@ -161,7 +153,6 @@ impl Action for CreateFstabEntry {
         }
 
         crate::util::write_atomic(fstab_path, &current_fstab_lines.join("\n"))
-            .await
             .map_err(Self::error)?;
 
         Ok(())

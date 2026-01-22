@@ -3,8 +3,7 @@ use std::{io::IsTerminal, process::ExitCode};
 use clap::Parser;
 use nix_installer::cli::CommandExecute;
 
-#[tokio::main]
-async fn main() -> eyre::Result<ExitCode> {
+fn main() -> eyre::Result<ExitCode> {
     color_eyre::config::HookBuilder::default()
         .issue_url(concat!(env!("CARGO_PKG_REPOSITORY"), "/issues/new"))
         .add_issue_metadata("version", env!("CARGO_PKG_VERSION"))
@@ -23,5 +22,5 @@ async fn main() -> eyre::Result<ExitCode> {
 
     tracing::info!("nix-installer v{}", env!("CARGO_PKG_VERSION"));
 
-    cli.execute().await
+    cli.execute()
 }

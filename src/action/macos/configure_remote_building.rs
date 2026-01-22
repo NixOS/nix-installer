@@ -2,7 +2,7 @@ use crate::action::base::{create_or_insert_into_file, CreateOrInsertIntoFile};
 use crate::action::{Action, ActionDescription, ActionError, ActionTag, StatefulAction};
 
 use std::path::Path;
-use tracing::{span, Instrument, Span};
+use tracing::{span, Span};
 
 const PROFILE_NIX_FILE_SHELL: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh";
 
@@ -18,7 +18,7 @@ pub struct ConfigureRemoteBuilding {
 
 impl ConfigureRemoteBuilding {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         let shell_buf = format!(
             r#"
 # Set up Nix only on SSH connections
@@ -42,7 +42,6 @@ fi
                     shell_buf.to_string(),
                     create_or_insert_into_file::Position::Beginning,
                 )
-                .await
                 .map_err(Self::error)?,
             )
         } else {
@@ -56,7 +55,6 @@ fi
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "configure_remote_building")]
 impl Action for ConfigureRemoteBuilding {
     fn action_tag() -> ActionTag {
@@ -82,13 +80,11 @@ impl Action for ConfigureRemoteBuilding {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
-        let span = tracing::Span::current().clone();
+    fn execute(&mut self) -> Result<(), ActionError> {
+        let _span = tracing::Span::current().clone();
         if let Some(create_or_insert_into_file) = &mut self.create_or_insert_into_file {
             create_or_insert_into_file
                 .try_execute()
-                .instrument(span)
-                .await
                 .map_err(Self::error)?;
         }
 
@@ -103,9 +99,9 @@ impl Action for ConfigureRemoteBuilding {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         if let Some(create_or_insert_into_file) = &mut self.create_or_insert_into_file {
-            create_or_insert_into_file.try_revert().await?
+            create_or_insert_into_file.try_revert()?
         };
 
         Ok(())

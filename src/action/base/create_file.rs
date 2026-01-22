@@ -2,12 +2,10 @@ use nix::unistd::{chown, Group, User};
 use tracing::{span, Span};
 
 use std::{
-    os::{unix::fs::MetadataExt, unix::fs::PermissionsExt},
-    path::{Path, PathBuf},
-};
-use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{Read, Write},
+    os::{unix::fs::MetadataExt, unix::fs::OpenOptionsExt, unix::fs::PermissionsExt},
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -34,7 +32,7 @@ pub struct CreateFile {
 
 impl CreateFile {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         path: impl AsRef<Path>,
         user: impl Into<Option<String>>,
         group: impl Into<Option<String>>,
@@ -58,13 +56,11 @@ impl CreateFile {
         if this.path.exists() {
             // If the path exists, perhaps we can just skip this
             let mut file = File::open(&this.path)
-                .await
                 .map_err(|e| ActionErrorKind::Open(this.path.clone(), e))
                 .map_err(Self::error)?;
 
             let metadata = file
                 .metadata()
-                .await
                 .map_err(|e| ActionErrorKind::GettingMetadata(this.path.clone(), e))
                 .map_err(Self::error)?;
 
@@ -126,7 +122,6 @@ impl CreateFile {
             // Does it have the right content?
             let mut discovered_buf = String::new();
             file.read_to_string(&mut discovered_buf)
-                .await
                 .map_err(|e| ActionErrorKind::Read(this.path.clone(), e))
                 .map_err(Self::error)?;
 
@@ -144,7 +139,6 @@ impl CreateFile {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_file")]
 impl Action for CreateFile {
     fn action_tag() -> ActionTag {
@@ -178,7 +172,7 @@ impl Action for CreateFile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         if tracing::enabled!(tracing::Level::TRACE) {
             let span = tracing::Span::current();
             span.record("buf", &self.buf);
@@ -193,12 +187,10 @@ impl Action for CreateFile {
 
         let mut file = options
             .open(&self.path)
-            .await
             .map_err(|e| ActionErrorKind::Open(self.path.to_owned(), e))
             .map_err(Self::error)?;
 
         file.write_all(self.buf.as_bytes())
-            .await
             .map_err(|e| ActionErrorKind::Write(self.path.to_owned(), e))
             .map_err(Self::error)?;
 
@@ -250,7 +242,7 @@ impl Action for CreateFile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let Self {
             path,
             user: _,
@@ -261,7 +253,6 @@ impl Action for CreateFile {
         } = self;
 
         crate::util::remove_file(path, OnMissing::Ignore)
-            .await
             .map_err(|e| ActionErrorKind::Remove(path.to_owned(), e))
             .map_err(Self::error)?;
 
@@ -273,53 +264,53 @@ impl Action for CreateFile {
 mod test {
     use super::*;
     use color_eyre::eyre::eyre;
-    use tokio::fs::write;
+    use std::fs::write;
 
-    #[tokio::test]
-    async fn creates_and_deletes_file() -> eyre::Result<()> {
+    #[test]
+    fn creates_and_deletes_file() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("creates_and_deletes_file");
         let mut action =
-            CreateFile::plan(test_file.clone(), None, None, None, "Test".into(), false).await?;
+            CreateFile::plan(test_file.clone(), None, None, None, "Test".into(), false)?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn creates_and_deletes_file_even_if_edited() -> eyre::Result<()> {
+    #[test]
+    fn creates_and_deletes_file_even_if_edited() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir
             .path()
             .join("creates_and_deletes_file_even_if_edited");
         let mut action =
-            CreateFile::plan(test_file.clone(), None, None, None, "Test".into(), false).await?;
+            CreateFile::plan(test_file.clone(), None, None, None, "Test".into(), false)?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        write(test_file.as_path(), "More content").await?;
+        write(test_file.as_path(), "More content")?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_exact_files_and_reverts_them() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_exact_files_and_reverts_them() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir
             .path()
             .join("recognizes_existing_exact_files_and_reverts_them");
 
         let test_content = "Some content";
-        write(test_file.as_path(), test_content).await?;
+        write(test_file.as_path(), test_content)?;
 
         let mut action = CreateFile::plan(
             test_file.clone(),
@@ -328,26 +319,25 @@ mod test {
             None,
             test_content.into(),
             false,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_different_files_and_errors() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_different_files_and_errors() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir
             .path()
             .join("recognizes_existing_different_files_and_errors");
 
-        write(test_file.as_path(), "Some content").await?;
+        write(test_file.as_path(), "Some content")?;
 
         match CreateFile::plan(
             test_file.clone(),
@@ -356,9 +346,7 @@ mod test {
             None,
             "Some different content".into(),
             false,
-        )
-        .await
-        {
+        ) {
             Err(error) => match error.kind() {
                 ActionErrorKind::DifferentContent(path) => assert_eq!(path, test_file.as_path()),
                 _ => {
@@ -379,16 +367,15 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_wrong_mode_and_errors() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_wrong_mode_and_errors() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("recognizes_wrong_mode_and_errors");
         let initial_mode = 0o777;
         let expected_mode = 0o000;
 
-        write(test_file.as_path(), "Some content").await?;
-        tokio::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))
-            .await?;
+        write(test_file.as_path(), "Some content")?;
+        std::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))?;
 
         match CreateFile::plan(
             test_file.clone(),
@@ -397,9 +384,7 @@ mod test {
             Some(expected_mode),
             "Some different content".into(),
             false,
-        )
-        .await
-        {
+        ) {
             Err(err) => match err.kind() {
                 ActionErrorKind::PathModeMismatch(path, got, expected) => {
                     assert_eq!(path, test_file.as_path());
@@ -424,15 +409,14 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_correct_mode() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_correct_mode() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("recognizes_correct_mode");
         let initial_mode = 0o777;
 
-        write(test_file.as_path(), "Some content").await?;
-        tokio::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))
-            .await?;
+        write(test_file.as_path(), "Some content")?;
+        std::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))?;
 
         let mut action = CreateFile::plan(
             test_file.clone(),
@@ -441,20 +425,19 @@ mod test {
             Some(initial_mode),
             "Some content".into(),
             false,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn errors_on_dir() -> eyre::Result<()> {
+    #[test]
+    fn errors_on_dir() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
 
         match CreateFile::plan(
@@ -464,9 +447,7 @@ mod test {
             None,
             "Some different content".into(),
             false,
-        )
-        .await
-        {
+        ) {
             Err(err) => match err.kind() {
                 ActionErrorKind::PathWasNotFile(path) => assert_eq!(path, temp_dir.path()),
                 _ => {

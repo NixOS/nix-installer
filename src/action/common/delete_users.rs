@@ -14,14 +14,14 @@ pub struct DeleteUsersInGroup {
 
 impl DeleteUsersInGroup {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         group_name: String,
         group_id: u32,
         users: Vec<String>,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let mut delete_users = vec![];
         for users in users {
-            delete_users.push(DeleteUser::plan(users).await?)
+            delete_users.push(DeleteUser::plan(users)?)
         }
 
         Ok(Self {
@@ -33,7 +33,6 @@ impl DeleteUsersInGroup {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "delete_users_in_group")]
 impl Action for DeleteUsersInGroup {
     fn action_tag() -> ActionTag {
@@ -73,9 +72,9 @@ impl Action for DeleteUsersInGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         for delete_user in self.delete_users.iter_mut() {
-            delete_user.try_execute().await.map_err(Self::error)?;
+            delete_user.try_execute().map_err(Self::error)?;
         }
         Ok(())
     }
@@ -97,10 +96,10 @@ impl Action for DeleteUsersInGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
         for delete_user in self.delete_users.iter_mut() {
-            if let Err(err) = delete_user.try_revert().await {
+            if let Err(err) = delete_user.try_revert() {
                 errors.push(err);
             }
         }

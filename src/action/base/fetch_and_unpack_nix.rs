@@ -1,8 +1,9 @@
+use std::io::Read;
 use std::path::PathBuf;
 
-use bytes::{Buf, Bytes};
-use reqwest::Url;
+use bytes::Bytes;
 use tracing::{span, Span};
+use url::Url;
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -25,7 +26,7 @@ pub struct FetchAndUnpackNix {
 
 impl FetchAndUnpackNix {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         url_or_path: UrlOrPath,
         dest: PathBuf,
         proxy: Option<Url>,
@@ -49,7 +50,7 @@ impl FetchAndUnpackNix {
         }
 
         if let Some(ssl_cert_file) = &ssl_cert_file {
-            parse_ssl_cert(ssl_cert_file).await.map_err(Self::error)?;
+            parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
         }
 
         Ok(Self {
@@ -62,7 +63,6 @@ impl FetchAndUnpackNix {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "fetch_and_unpack_nix")]
 impl Action for FetchAndUnpackNix {
     fn action_tag() -> ActionTag {
@@ -98,46 +98,59 @@ impl Action for FetchAndUnpackNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let bytes = match &self.url_or_path {
             UrlOrPath::Url(url) => {
                 let bytes = match url.scheme() {
                     "https" | "http" => {
-                        let mut buildable_client = reqwest::Client::builder();
+                        let mut agent_builder = ureq::AgentBuilder::new();
+
                         if let Some(proxy) = &self.proxy {
-                            buildable_client = buildable_client.proxy(
-                                reqwest::Proxy::all(proxy.clone())
-                                    .map_err(ActionErrorKind::Reqwest)
-                                    .map_err(Self::error)?,
-                            )
+                            let proxy = ureq::Proxy::new(proxy.as_str())
+                                .map_err(|e| ActionErrorKind::Ureq(Box::new(e.into())))
+                                .map_err(Self::error)?;
+                            agent_builder = agent_builder.proxy(proxy);
                         }
+
                         if let Some(ssl_cert_file) = &self.ssl_cert_file {
-                            let ssl_cert =
-                                parse_ssl_cert(ssl_cert_file).await.map_err(Self::error)?;
-                            buildable_client = buildable_client.add_root_certificate(ssl_cert);
+                            let cert = parse_ssl_cert(ssl_cert_file).map_err(Self::error)?;
+                            agent_builder = agent_builder.tls_config(std::sync::Arc::new(
+                                rustls::ClientConfig::builder()
+                                    .with_root_certificates({
+                                        let mut roots = rustls::RootCertStore::empty();
+                                        // Load system root certificates first
+                                        for native_cert in
+                                            rustls_native_certs::load_native_certs().certs
+                                        {
+                                            roots.add(native_cert).ok();
+                                        }
+                                        // Add the custom certificate
+                                        roots.add(cert).map_err(|e| {
+                                            Self::error(ActionErrorKind::Custom(Box::new(e)))
+                                        })?;
+                                        roots
+                                    })
+                                    .with_no_client_auth(),
+                            ));
                         }
-                        let client = buildable_client
-                            .build()
-                            .map_err(ActionErrorKind::Reqwest)
+
+                        let agent = agent_builder.build();
+                        let response = agent
+                            .get(url.as_str())
+                            .call()
+                            .map_err(|e| ActionErrorKind::Ureq(Box::new(e)))
                             .map_err(Self::error)?;
-                        let req = client
-                            .get(url.clone())
-                            .build()
-                            .map_err(ActionErrorKind::Reqwest)
+
+                        let mut buf = Vec::new();
+                        response
+                            .into_reader()
+                            .read_to_end(&mut buf)
+                            .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.as_str()), e))
                             .map_err(Self::error)?;
-                        let res = client
-                            .execute(req)
-                            .await
-                            .map_err(ActionErrorKind::Reqwest)
-                            .map_err(Self::error)?;
-                        res.bytes()
-                            .await
-                            .map_err(ActionErrorKind::Reqwest)
-                            .map_err(Self::error)?
+                        Bytes::from(buf)
                     },
                     "file" => {
-                        let buf = tokio::fs::read(url.path())
-                            .await
+                        let buf = std::fs::read(url.path())
                             .map_err(|e| ActionErrorKind::Read(PathBuf::from(url.path()), e))
                             .map_err(Self::error)?;
                         Bytes::from(buf)
@@ -147,8 +160,7 @@ impl Action for FetchAndUnpackNix {
                 bytes
             },
             UrlOrPath::Path(path) => {
-                let buf = tokio::fs::read(path)
-                    .await
+                let buf = std::fs::read(path)
                     .map_err(|e| ActionErrorKind::Read(path.clone(), e))
                     .map_err(Self::error)?;
                 Bytes::from(buf)
@@ -163,11 +175,10 @@ impl Action for FetchAndUnpackNix {
         //     trying to unpack outside of destination path: /nix/temp-install-dir
         if self.dest.exists() {
             crate::util::remove_dir_all(&self.dest, OnMissing::Ignore)
-                .await
                 .map_err(|e| Self::error(ActionErrorKind::Remove(self.dest.clone(), e)))?;
         }
 
-        let decoder = xz2::read::XzDecoder::new(bytes.reader());
+        let decoder = xz2::read::XzDecoder::new(std::io::Cursor::new(bytes));
         let mut archive = tar::Archive::new(decoder);
         archive.set_preserve_permissions(true);
         archive.set_preserve_mtime(true);
@@ -185,7 +196,7 @@ impl Action for FetchAndUnpackNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         Ok(())
     }
 }

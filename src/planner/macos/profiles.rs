@@ -11,17 +11,16 @@ pub enum LoadError {
     ProfileListing(#[from] crate::ActionErrorKind),
 }
 
-pub async fn load() -> Result<Policies, LoadError> {
+pub fn load() -> Result<Policies, LoadError> {
     let buf = execute_command(
-        tokio::process::Command::new("/usr/bin/profiles")
+        std::process::Command::new("/usr/bin/profiles")
             // "prints all configuration profiles to console"
             .arg("-P")
             // "path to output XML plist file (for -P, -L, -C).  Use 'stdout' to send information to the console."
             // NOTE(grahamc): `stdout` doesn't output XML formatting, but `stdout-xml` does
             .args(["-o", "stdout-xml"])
             .stdin(std::process::Stdio::null()),
-    )
-    .await?
+    )?
     .stdout;
 
     Ok(plist::from_reader(std::io::Cursor::new(buf))?)

@@ -13,25 +13,22 @@ pub(crate) struct NixProfile<'a> {
 }
 
 impl NixProfile<'_> {
-    pub(crate) async fn install_packages(
+    pub(crate) fn install_packages(
         &self,
         to_default: super::WriteToDefaultProfile,
     ) -> Result<(), super::Error> {
-        self.validate_paths_can_cohabitate().await?;
+        self.validate_paths_can_cohabitate()?;
 
         let tmp = tempfile::tempdir().map_err(super::Error::CreateTempDir)?;
         let temporary_profile = tmp.path().join("profile");
 
-        self.make_empty_profile(&temporary_profile).await?;
+        self.make_empty_profile(&temporary_profile)?;
 
         if let Ok(canon_profile) = self.profile.canonicalize() {
-            self.set_profile_to(Some(&temporary_profile), &canon_profile)
-                .await?;
+            self.set_profile_to(Some(&temporary_profile), &canon_profile)?;
         }
 
-        let paths_by_pkg_output = self
-            .collect_paths_by_package_output(&temporary_profile)
-            .await?;
+        let paths_by_pkg_output = self.collect_paths_by_package_output(&temporary_profile)?;
 
         for pkg in self.pkgs {
             let pkg_outputs =
@@ -50,11 +47,11 @@ impl NixProfile<'_> {
                         "Uninstalling element from the scratch profile due to conflicts"
                     );
 
-                    self.uninstall_element(&temporary_profile, element).await?;
+                    self.uninstall_element(&temporary_profile, element)?;
                 }
             }
 
-            self.install_path(&temporary_profile, pkg).await?;
+            self.install_path(&temporary_profile, pkg)?;
         }
 
         self.set_profile_to(
@@ -64,15 +61,14 @@ impl NixProfile<'_> {
                 super::WriteToDefaultProfile::WriteToDefault => None,
             },
             &temporary_profile,
-        )
-        .await?;
+        )?;
 
         Ok(())
     }
 
     /// Collect all the paths in the new set of packages.
     /// Returns an error if they have paths that will conflict with each other when installed.
-    async fn validate_paths_can_cohabitate(&self) -> Result<HashSet<PathBuf>, super::Error> {
+    fn validate_paths_can_cohabitate(&self) -> Result<HashSet<PathBuf>, super::Error> {
         let mut all_new_paths = HashSet::<PathBuf>::new();
 
         for pkg in self.pkgs {
@@ -93,10 +89,9 @@ impl NixProfile<'_> {
         Ok(all_new_paths)
     }
 
-    async fn make_empty_profile(&self, profile: &Path) -> Result<(), super::Error> {
+    fn make_empty_profile(&self, profile: &Path) -> Result<(), super::Error> {
         // See: https://github.com/DeterminateSystems/nix-src/blob/f60b21563990ec11d87dd4abe57b8b187d6b6fb3/src/nix-env/buildenv.nix
-        let output = tokio::process::Command::new(self.nix_store_path.join("bin/nix"))
-            .process_group(0)
+        let output = std::process::Command::new(self.nix_store_path.join("bin/nix"))
             .set_nix_options(self.nss_ca_cert_path)?
             .args([
                 "build",
@@ -114,7 +109,6 @@ impl NixProfile<'_> {
             ])
             .arg(profile)
             .output()
-            .await
             .map_err(|e| {
                 super::Error::StartNixCommand("nix build-ing an empty profile".to_string(), e)
             })?;
@@ -129,16 +123,15 @@ impl NixProfile<'_> {
         Ok(())
     }
 
-    async fn set_profile_to(
+    fn set_profile_to(
         &self,
         profile: Option<&Path>,
         canon_profile: &Path,
     ) -> Result<(), super::Error> {
         tracing::debug!("Duplicating the existing profile into the scratch profile");
 
-        let mut cmd = tokio::process::Command::new(self.nix_store_path.join("bin/nix-env"));
+        let mut cmd = std::process::Command::new(self.nix_store_path.join("bin/nix-env"));
 
-        cmd.process_group(0);
         cmd.set_nix_options(self.nss_ca_cert_path)?;
 
         if let Some(profile) = profile {
@@ -146,17 +139,12 @@ impl NixProfile<'_> {
             cmd.arg(profile);
         }
 
-        let output = cmd
-            .arg("--set")
-            .arg(canon_profile)
-            .output()
-            .await
-            .map_err(|e| {
-                super::Error::StartNixCommand(
-                    "Duplicating the default profile into the scratch profile".to_string(),
-                    e,
-                )
-            })?;
+        let output = cmd.arg("--set").arg(canon_profile).output().map_err(|e| {
+            super::Error::StartNixCommand(
+                "Duplicating the default profile into the scratch profile".to_string(),
+                e,
+            )
+        })?;
 
         if !output.status.success() {
             return Err(super::Error::NixCommand(
@@ -168,7 +156,7 @@ impl NixProfile<'_> {
         Ok(())
     }
 
-    async fn collect_paths_by_package_output(
+    fn collect_paths_by_package_output(
         &self,
         profile: &Path,
     ) -> Result<HashMap<String, HashSet<PathBuf>>, super::Error> {
@@ -176,8 +164,7 @@ impl NixProfile<'_> {
         // Constructs a map of (store path in the profile) -> (hash set of paths that are inside that store path)
         let mut installed_paths: HashMap<String, HashSet<PathBuf>> = HashMap::new();
         {
-            let output = tokio::process::Command::new(self.nix_store_path.join("bin/nix"))
-                .process_group(0)
+            let output = std::process::Command::new(self.nix_store_path.join("bin/nix"))
                 .set_nix_options(self.nss_ca_cert_path)?
                 .arg("profile")
                 .arg("list")
@@ -186,7 +173,6 @@ impl NixProfile<'_> {
                 .arg("--json")
                 .stdin(std::process::Stdio::null())
                 .output()
-                .await
                 .map_err(|e| {
                     super::Error::StartNixCommand(
                         "nix profile list'ing installed packages".to_string(),
@@ -228,9 +214,8 @@ impl NixProfile<'_> {
         Ok(installed_paths)
     }
 
-    async fn uninstall_element(&self, profile: &Path, element: &str) -> Result<(), super::Error> {
-        let output = tokio::process::Command::new(self.nix_store_path.join("bin/nix"))
-            .process_group(0)
+    fn uninstall_element(&self, profile: &Path, element: &str) -> Result<(), super::Error> {
+        let output = std::process::Command::new(self.nix_store_path.join("bin/nix"))
             .set_nix_options(self.nss_ca_cert_path)?
             .arg("profile")
             .arg("remove")
@@ -238,7 +223,6 @@ impl NixProfile<'_> {
             .arg(profile)
             .arg(element)
             .output()
-            .await
             .map_err(|e| {
                 super::Error::StartNixCommand(
                     format!("nix profile remove'ing conflicting package {:?}", element),
@@ -256,9 +240,9 @@ impl NixProfile<'_> {
         Ok(())
     }
 
-    async fn install_path(&self, profile: &Path, add: &Path) -> Result<(), super::Error> {
-        let output = tokio::process::Command::new(self.nix_store_path.join("bin/nix"))
-            .process_group(0)
+    fn install_path(&self, profile: &Path, add: &Path) -> Result<(), super::Error> {
+        let output = std::process::Command::new(self.nix_store_path.join("bin/nix"))
+
             .set_nix_options(self.nss_ca_cert_path)?
             .arg("profile")
             .arg("install") // "add" in determinate nix, but "install" is an alias
@@ -266,7 +250,7 @@ impl NixProfile<'_> {
             .arg(profile)
             .arg(add)
             .output()
-            .await
+
             .map_err(|e| {
                 super::Error::StartNixCommand(
                     format!("Adding the package {:?} to the profile", add),
@@ -319,14 +303,14 @@ trait NixCommandExt {
     fn set_nix_options(
         &mut self,
         nss_ca_cert_pkg: &Path,
-    ) -> Result<&mut tokio::process::Command, super::Error>;
+    ) -> Result<&mut std::process::Command, super::Error>;
 }
 
-impl NixCommandExt for tokio::process::Command {
+impl NixCommandExt for std::process::Command {
     fn set_nix_options(
         &mut self,
         nss_ca_cert_pkg: &Path,
-    ) -> Result<&mut tokio::process::Command, super::Error> {
+    ) -> Result<&mut std::process::Command, super::Error> {
         Ok(self
             .args(["--option", "substitute", "false"])
             .args(["--option", "post-build-hook", ""])

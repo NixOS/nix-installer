@@ -24,13 +24,12 @@ pub struct MoveUnpackedNix {
 
 impl MoveUnpackedNix {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
         // Note: Do NOT try to check for the src/dest since the installer creates those
         Ok(Self { unpacked_path }.into())
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "mount_unpacked_nix")]
 impl Action for MoveUnpackedNix {
     fn action_tag() -> ActionTag {
@@ -60,7 +59,7 @@ impl Action for MoveUnpackedNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self { unpacked_path } = self;
 
         // This is the `nix-$VERSION` folder which unpacks from the tarball, not a nix derivation
@@ -73,8 +72,7 @@ impl Action for MoveUnpackedNix {
         }
         let found_nix_path = found_nix_paths.into_iter().next().unwrap();
         let src_store = found_nix_path.join("store");
-        let mut src_store_listing = tokio::fs::read_dir(src_store.clone())
-            .await
+        let src_store_listing = std::fs::read_dir(src_store.clone())
             .map_err(|e| ActionErrorKind::ReadDir(src_store.clone(), e))
             .map_err(Self::error)?;
         let dest_store = Path::new(DEST).join("store");
@@ -85,23 +83,17 @@ impl Action for MoveUnpackedNix {
                 )))?;
             }
         } else {
-            tokio::fs::create_dir(&dest_store)
-                .await
+            std::fs::create_dir(&dest_store)
                 .map_err(|e| ActionErrorKind::CreateDirectory(dest_store.clone(), e))
                 .map_err(Self::error)?;
         }
 
         // Read the entire source directory before modifying it, to
         // avoid seeing entries twice (e.g. on XFS).
-        let mut entries = vec![];
-        while let Some(entry) = src_store_listing
-            .next_entry()
-            .await
+        let entries: Vec<_> = src_store_listing
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|e| ActionErrorKind::ReadDir(src_store.clone(), e))
-            .map_err(Self::error)?
-        {
-            entries.push(entry);
-        }
+            .map_err(Self::error)?;
 
         for entry in entries {
             let entry_dest = dest_store.join(entry.file_name());
@@ -109,19 +101,16 @@ impl Action for MoveUnpackedNix {
                 tracing::trace!(src = %entry.path().display(), dest = %entry_dest.display(), "Removing already existing package");
                 if entry_dest.is_dir() {
                     crate::util::remove_dir_all(&entry_dest, OnMissing::Ignore)
-                        .await
                         .map_err(|e| ActionErrorKind::Remove(entry_dest.clone(), e))
                         .map_err(Self::error)?;
                 } else {
                     crate::util::remove_file(&entry_dest, OnMissing::Ignore)
-                        .await
                         .map_err(|e| ActionErrorKind::Remove(entry_dest.clone(), e))
                         .map_err(Self::error)?;
                 }
             }
             tracing::trace!(src = %entry.path().display(), dest = %entry_dest.display(), "Renaming");
-            tokio::fs::rename(&entry.path(), &entry_dest)
-                .await
+            std::fs::rename(&entry.path(), &entry_dest)
                 .map_err(|e| ActionErrorKind::Rename(entry.path(), entry_dest.to_owned(), e))
                 .map_err(Self::error)?;
 
@@ -139,8 +128,7 @@ impl Action for MoveUnpackedNix {
                     .permissions();
                 perms.set_readonly(true);
 
-                tokio::fs::set_permissions(path, perms.clone())
-                    .await
+                std::fs::set_permissions(path, perms.clone())
                     .map_err(|e| {
                         ActionErrorKind::SetPermissions(
                             perms.mode(),
@@ -153,8 +141,7 @@ impl Action for MoveUnpackedNix {
 
             // Leave a back link where we copied from since later we may need to know which packages we actually transferred
             // eg, know which `nix` version we installed when curing a user with several versions installed
-            tokio::fs::symlink(&entry_dest, entry.path())
-                .await
+            std::os::unix::fs::symlink(&entry_dest, entry.path())
                 .map_err(|e| ActionErrorKind::Symlink(entry_dest.to_owned(), entry.path(), e))
                 .map_err(Self::error)?;
         }
@@ -167,7 +154,7 @@ impl Action for MoveUnpackedNix {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         // Noop
         Ok(())
     }

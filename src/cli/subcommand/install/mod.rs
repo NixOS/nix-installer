@@ -8,7 +8,7 @@ use crate::{
     cli::{
         ensure_root,
         interaction::{self, PromptChoice},
-        signal_channel,
+        setup_signal_handler,
         subcommand::split_receipt::{PHASE1_RECEIPT_LOCATION, PHASE2_RECEIPT_LOCATION},
         CommandExecute,
     },
@@ -72,10 +72,9 @@ pub struct Install {
     pub planner: Option<BuiltinPlanner>,
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for Install {
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         let Self {
             no_confirm,
             plan,
@@ -89,9 +88,8 @@ impl CommandExecute for Install {
         let existing_receipt: Option<InstallPlan> = match Path::new(RECEIPT_LOCATION).exists() {
             true => {
                 tracing::trace!("Reading existing receipt");
-                let install_plan_string = tokio::fs::read_to_string(&RECEIPT_LOCATION)
-                    .await
-                    .wrap_err("Reading plan")?;
+                let install_plan_string =
+                    std::fs::read_to_string(&RECEIPT_LOCATION).wrap_err("Reading plan")?;
                 Some(
                     serde_json::from_str(&install_plan_string).wrap_err_with(|| {
                         format!("Unable to parse existing receipt `{RECEIPT_LOCATION}`, it may be from an incompatible version of `nix-installer`. Try running `/nix/nix-installer uninstall`, then installing again.")
@@ -111,15 +109,13 @@ impl CommandExecute for Install {
         }
 
         let mut install_plan = if let Some(plan_path) = plan {
-            let install_plan_string = tokio::fs::read_to_string(&plan_path)
-                .await
-                .wrap_err("Reading plan")?;
+            let install_plan_string =
+                std::fs::read_to_string(&plan_path).wrap_err("Reading plan")?;
             serde_json::from_str(&install_plan_string)?
         } else {
             let planner = match maybe_planner {
                 Some(planner) => planner,
                 None => BuiltinPlanner::from_common_settings(settings.clone())
-                    .await
                     .map_err(|e| eyre::eyre!(e))?,
             };
 
@@ -153,7 +149,7 @@ impl CommandExecute for Install {
                 return Ok(ExitCode::SUCCESS);
             }
 
-            let res = planner.plan().await;
+            let res = planner.plan();
             match res {
                 Ok(plan) => plan,
                 Err(err) => {
@@ -166,7 +162,7 @@ impl CommandExecute for Install {
             }
         };
 
-        if let Err(err) = install_plan.pre_install_check().await {
+        if let Err(err) = install_plan.pre_install_check() {
             if let Some(expected) = err.expected() {
                 eprintln!("{}", expected.red());
                 return Ok(ExitCode::FAILURE);
@@ -180,31 +176,25 @@ impl CommandExecute for Install {
                 match interaction::prompt(
                     install_plan
                         .describe_install(currently_explaining)
-                        .await
                         .map_err(|e| eyre!(e))?,
                     PromptChoice::Yes,
                     currently_explaining,
-                )
-                .await?
-                {
+                )? {
                     PromptChoice::Yes => break,
                     PromptChoice::Explain => currently_explaining = true,
-                    PromptChoice::No => {
-                        interaction::clean_exit_with_message(
-                            "Okay, not continuing with the installation. Bye!",
-                        )
-                        .await
-                    },
+                    PromptChoice::No => interaction::clean_exit_with_message(
+                        "Okay, not continuing with the installation. Bye!",
+                    ),
                 }
             }
         }
 
-        let (tx, rx1) = signal_channel().await?;
+        let cancel_signal = setup_signal_handler();
 
-        match install_plan.install(rx1).await {
+        match install_plan.install(Some(cancel_signal.clone())) {
             Err(err) => {
                 // Attempt to copy self to the store if possible, but since the install failed, this might not work, that's ok.
-                copy_self_to_nix_dir().await.ok();
+                copy_self_to_nix_dir().ok();
 
                 if !no_confirm {
                     let mut was_expected = false;
@@ -229,25 +219,18 @@ impl CommandExecute for Install {
                         match interaction::prompt(
                             install_plan
                                 .describe_uninstall(currently_explaining)
-                                .await
                                 .map_err(|e| eyre!(e))?,
                             PromptChoice::Yes,
                             currently_explaining,
-                        )
-                        .await?
-                        {
+                        )? {
                             PromptChoice::Yes => break,
                             PromptChoice::Explain => currently_explaining = true,
-                            PromptChoice::No => {
-                                interaction::clean_exit_with_message(
-                                    "Okay, didn't do anything! Bye!",
-                                )
-                                .await
-                            },
+                            PromptChoice::No => interaction::clean_exit_with_message(
+                                "Okay, didn't do anything! Bye!",
+                            ),
                         }
                     }
-                    let rx2 = tx.subscribe();
-                    let res = install_plan.uninstall(rx2).await;
+                    let res = install_plan.uninstall(Some(cancel_signal));
 
                     match res {
                         Err(NixInstallerError::ActionRevert(errs)) => {
@@ -294,14 +277,12 @@ impl CommandExecute for Install {
             },
             Ok(_) => {
                 copy_self_to_nix_dir()
-                    .await
                     .wrap_err("Copying `nix-installer` to `/nix/nix-installer`")?;
 
                 let phase1_receipt_path = Path::new(PHASE1_RECEIPT_LOCATION);
                 if phase1_receipt_path.exists() {
                     tracing::debug!("Removing pre-existing uninstall phase 1 receipt at {PHASE1_RECEIPT_LOCATION} after successful install");
                     crate::util::remove_file(phase1_receipt_path, OnMissing::Ignore)
-                        .await
                         .wrap_err_with(|| format!("Failed to remove uninstall phase 1 receipt at {PHASE1_RECEIPT_LOCATION}"))?;
                 }
 
@@ -309,7 +290,6 @@ impl CommandExecute for Install {
                 if phase2_receipt_path.exists() {
                     tracing::debug!("Removing pre-existing uninstall phase 2 receipt at {PHASE2_RECEIPT_LOCATION} after successful install");
                     crate::util::remove_file(phase2_receipt_path, OnMissing::Ignore)
-                        .await
                         .wrap_err_with(|| format!("Failed to remove uninstall phase 2 receipt at {PHASE2_RECEIPT_LOCATION}"))?;
                 }
 
@@ -334,9 +314,9 @@ impl CommandExecute for Install {
 }
 
 #[tracing::instrument(level = "debug")]
-async fn copy_self_to_nix_dir() -> Result<(), std::io::Error> {
+fn copy_self_to_nix_dir() -> Result<(), std::io::Error> {
     let path = std::env::current_exe()?;
-    tokio::fs::copy(path, "/nix/nix-installer").await?;
-    tokio::fs::set_permissions("/nix/nix-installer", PermissionsExt::from_mode(0o0755)).await?;
+    std::fs::copy(path, "/nix/nix-installer")?;
+    std::fs::set_permissions("/nix/nix-installer", PermissionsExt::from_mode(0o0755))?;
     Ok(())
 }

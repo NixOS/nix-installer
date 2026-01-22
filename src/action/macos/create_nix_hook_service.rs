@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::process::Command;
 use tracing::{span, Span};
 
 use std::{path::PathBuf, process::Stdio};
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, process::Command};
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -24,7 +26,7 @@ pub struct CreateNixHookService {
 
 impl CreateNixHookService {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         let mut this = Self {
             path: PathBuf::from(
                 "/Library/LaunchDaemons/systems.determinate.nix-installer.nix-hook.plist",
@@ -43,7 +45,6 @@ impl CreateNixHookService {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null()),
         )
-        .await
         .ok();
 
         if check_loaded.is_some() {
@@ -58,9 +59,7 @@ impl CreateNixHookService {
         if this.path.exists() {
             let discovered_plist: LaunchctlHookPlist =
                 plist::from_file(&this.path).map_err(Self::error)?;
-            let expected_plist = generate_plist(&this.service_label)
-                .await
-                .map_err(Self::error)?;
+            let expected_plist = generate_plist(&this.service_label).map_err(Self::error)?;
             if discovered_plist != expected_plist {
                 tracing::trace!(
                     ?discovered_plist,
@@ -82,7 +81,6 @@ impl CreateNixHookService {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_nix_hook_service")]
 impl Action for CreateNixHookService {
     fn action_tag() -> ActionTag {
@@ -115,7 +113,7 @@ impl Action for CreateNixHookService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             path,
             service_label,
@@ -124,24 +122,21 @@ impl Action for CreateNixHookService {
 
         if *needs_bootout {
             crate::action::macos::retry_bootout(DARWIN_LAUNCHD_DOMAIN, service_label)
-                .await
                 .map_err(Self::error)?;
         }
 
-        let generated_plist = generate_plist(service_label).await.map_err(Self::error)?;
+        let generated_plist = generate_plist(service_label).map_err(Self::error)?;
 
         let mut options = OpenOptions::new();
         options.create(true).write(true).read(true);
 
         let mut file = options
             .open(&path)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Open(path.to_owned(), e)))?;
 
         let mut buf = Vec::new();
         plist::to_writer_xml(&mut buf, &generated_plist).map_err(Self::error)?;
         file.write_all(&buf)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Write(path.to_owned(), e)))?;
 
         Ok(())
@@ -155,9 +150,8 @@ impl Action for CreateNixHookService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         crate::util::remove_file(&self.path, OnMissing::Ignore)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Remove(self.path.to_owned(), e)))?;
 
         Ok(())
@@ -165,7 +159,7 @@ impl Action for CreateNixHookService {
 }
 
 /// This function must be able to operate at both plan and execute time.
-async fn generate_plist(service_label: &str) -> Result<LaunchctlHookPlist, ActionErrorKind> {
+fn generate_plist(service_label: &str) -> Result<LaunchctlHookPlist, ActionErrorKind> {
     let plist = LaunchctlHookPlist {
         keep_alive: KeepAliveOpts {
             successful_exit: false,

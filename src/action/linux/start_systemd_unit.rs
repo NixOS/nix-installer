@@ -1,4 +1,4 @@
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionState, ActionTag, StatefulAction};
@@ -18,17 +18,13 @@ pub struct StartSystemdUnit {
 
 impl StartSystemdUnit {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
-        unit: impl AsRef<str>,
-        enable: bool,
-    ) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(unit: impl AsRef<str>, enable: bool) -> Result<StatefulAction<Self>, ActionError> {
         let unit = unit.as_ref();
         let mut command = Command::new("systemctl");
         command.arg("is-active");
         command.arg(unit);
         let output = command
             .output()
-            .await
             .map_err(|e| Self::error(ActionErrorKind::command(&command, e)))?;
 
         let state = if output.status.success() {
@@ -48,7 +44,6 @@ impl StartSystemdUnit {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "start_systemd_unit")]
 impl Action for StartSystemdUnit {
     fn action_tag() -> ActionTag {
@@ -71,7 +66,7 @@ impl Action for StartSystemdUnit {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self { unit, enable } = self;
 
         match enable {
@@ -79,25 +74,21 @@ impl Action for StartSystemdUnit {
                 // TODO(@Hoverbear): Handle proxy vars
                 execute_command(
                     Command::new("systemctl")
-                        .process_group(0)
                         .arg("enable")
                         .arg("--now")
                         .arg(unit)
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
             false => {
                 // TODO(@Hoverbear): Handle proxy vars
                 execute_command(
                     Command::new("systemctl")
-                        .process_group(0)
                         .arg("start")
                         .arg(unit)
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
         }
@@ -113,18 +104,16 @@ impl Action for StartSystemdUnit {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
         if self.enable {
             if let Err(e) = execute_command(
                 Command::new("systemctl")
-                    .process_group(0)
                     .arg("disable")
                     .arg(&self.unit)
                     .stdin(std::process::Stdio::null()),
             )
-            .await
             .map_err(Self::error)
             {
                 errors.push(e);
@@ -134,12 +123,10 @@ impl Action for StartSystemdUnit {
         // We do both to avoid an error doing `disable --now` if the user did stop it already somehow.
         if let Err(e) = execute_command(
             Command::new("systemctl")
-                .process_group(0)
                 .arg("stop")
                 .arg(&self.unit)
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)
         {
             errors.push(e);

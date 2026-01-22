@@ -1,6 +1,6 @@
 use std::process::Output;
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
@@ -20,7 +20,7 @@ pub struct KickstartLaunchctlService {
 
 impl KickstartLaunchctlService {
     #[tracing::instrument(level = "debug")]
-    pub async fn plan(domain: &str, service: &str) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(domain: &str, service: &str) -> Result<StatefulAction<Self>, ActionError> {
         let domain = domain.to_string();
         let service = service.to_string();
 
@@ -28,14 +28,12 @@ impl KickstartLaunchctlService {
         let mut service_started = false;
         let output = execute_command(
             Command::new("launchctl")
-                .process_group(0)
                 .arg("print")
                 .arg(format!("{domain}/{service}"))
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped()),
         )
-        .await
         .ok();
 
         if let Some(output) = output {
@@ -67,7 +65,6 @@ impl KickstartLaunchctlService {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "kickstart_launchctl_service")]
 impl Action for KickstartLaunchctlService {
     fn action_tag() -> ActionTag {
@@ -93,10 +90,8 @@ impl Action for KickstartLaunchctlService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
-        super::retry_kickstart(&self.domain, &self.service)
-            .await
-            .map_err(Self::error)?;
+    fn execute(&mut self) -> Result<(), ActionError> {
+        super::retry_kickstart(&self.domain, &self.service).map_err(Self::error)?;
 
         Ok(())
     }
@@ -109,18 +104,16 @@ impl Action for KickstartLaunchctlService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         // MacOs doesn't offer an "ensure-stopped" like they do with Kickstart
         let mut command = Command::new("launchctl");
-        command.process_group(0);
         command.arg("stop");
         command.arg(format!("{}/{}", self.domain, self.service));
         command.stdin(std::process::Stdio::null());
-        let command_str = format!("{:?}", command.as_std());
+        let command_str = format!("{:?}", command);
 
         let output = command
             .output()
-            .await
             .map_err(|e| Self::error(ActionErrorKind::command(&command, e)))?;
 
         // On our test Macs, a status code of `3` was reported if the service was stopped while not running.

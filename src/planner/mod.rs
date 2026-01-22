@@ -25,21 +25,21 @@ pub struct MyPlanner {
 }
 
 
-#[async_trait::async_trait]
+
 #[typetag::serde(name = "my-planner")]
 impl Planner for MyPlanner {
-    async fn default() -> Result<Self, PlannerError> {
+    fn default() -> Result<Self, PlannerError> {
         Ok(Self {
-            common: CommonSettings::default().await?,
+            common: CommonSettings::default()?,
         })
     }
 
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         Ok(vec![
             // ...
 
                 CreateFile::plan("/example", None, None, None, "Example".to_string(), false)
-                    .await
+
                     .map_err(PlannerError::Action)?.boxed(),
         ])
     }
@@ -53,10 +53,10 @@ impl Planner for MyPlanner {
         Ok(map)
     }
 
-    async fn configured_settings(
+    fn configured_settings(
         &self,
     ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default().await?.settings()?;
+        let default = Self::default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -69,7 +69,7 @@ impl Planner for MyPlanner {
         Ok(settings)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError> {
+    fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => Ok(()),
@@ -81,17 +81,17 @@ impl Planner for MyPlanner {
     }
 }
 
-# async fn custom_planner_install() -> color_eyre::Result<()> {
-let planner = MyPlanner::default().await?;
-let mut plan = InstallPlan::plan(planner).await?;
-match plan.install(None).await {
+# fn custom_planner_install() -> color_eyre::Result<()> {
+let planner = MyPlanner::default()?;
+let mut plan = InstallPlan::plan(planner)?;
+match plan.install(None) {
     Ok(()) => tracing::info!("Done"),
     Err(e) => {
         match e.source() {
             Some(source) => tracing::error!("{e}: {}", source),
             None => tracing::error!("{e}"),
         };
-        plan.uninstall(None).await?;
+        plan.uninstall(None)?;
     },
 };
 
@@ -137,20 +137,19 @@ use crate::{
 };
 
 /// Something which can be used to plan out an [`InstallPlan`]
-#[async_trait::async_trait]
+
 #[typetag::serde(tag = "planner")]
 pub trait Planner: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
     /// Instantiate the planner with default settings, if possible
-    async fn default() -> Result<Self, PlannerError>
+    fn default() -> Result<Self, PlannerError>
     where
         Self: Sized;
     /// Plan out the [`Action`]s for an [`InstallPlan`]
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError>;
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError>;
     /// The settings being used by the planner
     fn settings(&self) -> Result<HashMap<String, serde_json::Value>, InstallSettingsError>;
 
-    async fn configured_settings(&self)
-        -> Result<HashMap<String, serde_json::Value>, PlannerError>;
+    fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError>;
 
     /// A boxed, type erased planner
     fn boxed(self) -> Box<dyn Planner>
@@ -160,13 +159,13 @@ pub trait Planner: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
         Box::new(self)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError>;
+    fn platform_check(&self) -> Result<(), PlannerError>;
 
-    async fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
         Ok(())
     }
 
-    async fn pre_install_check(&self) -> Result<(), PlannerError> {
+    fn pre_install_check(&self) -> Result<(), PlannerError> {
         Ok(())
     }
 }
@@ -193,34 +192,34 @@ pub enum BuiltinPlanner {
 
 impl BuiltinPlanner {
     /// Heuristically determine the default planner for the target system
-    pub async fn default() -> Result<Self, PlannerError> {
+    pub fn default() -> Result<Self, PlannerError> {
         use target_lexicon::{Architecture, OperatingSystem};
         match (Architecture::host(), OperatingSystem::host()) {
-            (Architecture::X86_64, OperatingSystem::Linux) => Self::detect_linux_distro().await,
+            (Architecture::X86_64, OperatingSystem::Linux) => Self::detect_linux_distro(),
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::default().await?))
+                Ok(Self::Linux(linux::Linux::default()?))
             },
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::default().await?))
+                Ok(Self::Linux(linux::Linux::default()?))
             },
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
-                Ok(Self::Macos(macos::Macos::default().await?))
+                Ok(Self::Macos(macos::Macos::default()?))
             },
             (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
             | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => {
-                Ok(Self::Macos(macos::Macos::default().await?))
+                Ok(Self::Macos(macos::Macos::default()?))
             },
             _ => Err(PlannerError::UnsupportedArchitecture(target_lexicon::HOST)),
         }
     }
 
-    async fn detect_linux_distro() -> Result<Self, PlannerError> {
+    fn detect_linux_distro() -> Result<Self, PlannerError> {
         let is_steam_deck = get_os_release_id()
             .map(|id| id == "steamos")
             .unwrap_or(false);
         if is_steam_deck {
-            return Ok(Self::SteamDeck(steam_deck::SteamDeck::default().await?));
+            return Ok(Self::SteamDeck(steam_deck::SteamDeck::default()?));
         }
 
         let is_ostree = std::process::Command::new("ostree")
@@ -229,14 +228,14 @@ impl BuiltinPlanner {
             .output()
             .is_ok_and(|output| output.status.success());
         if is_ostree {
-            return Ok(Self::Ostree(ostree::Ostree::default().await?));
+            return Ok(Self::Ostree(ostree::Ostree::default()?));
         }
 
-        Ok(Self::Linux(linux::Linux::default().await?))
+        Ok(Self::Linux(linux::Linux::default()?))
     }
 
-    pub async fn from_common_settings(settings: CommonSettings) -> Result<Self, PlannerError> {
-        let mut built = Self::default().await?;
+    pub fn from_common_settings(settings: CommonSettings) -> Result<Self, PlannerError> {
+        let mut built = Self::default()?;
         match &mut built {
             BuiltinPlanner::Linux(inner) => inner.settings = settings,
             BuiltinPlanner::SteamDeck(inner) => inner.settings = settings,
@@ -264,23 +263,21 @@ impl BuiltinPlanner {
         }
     }
 
-    pub async fn configured_settings(
-        &self,
-    ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
+    pub fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
         match self {
-            BuiltinPlanner::Linux(inner) => inner.configured_settings().await,
-            BuiltinPlanner::SteamDeck(inner) => inner.configured_settings().await,
-            BuiltinPlanner::Ostree(inner) => inner.configured_settings().await,
-            BuiltinPlanner::Macos(inner) => inner.configured_settings().await,
+            BuiltinPlanner::Linux(inner) => inner.configured_settings(),
+            BuiltinPlanner::SteamDeck(inner) => inner.configured_settings(),
+            BuiltinPlanner::Ostree(inner) => inner.configured_settings(),
+            BuiltinPlanner::Macos(inner) => inner.configured_settings(),
         }
     }
 
-    pub async fn plan(self) -> Result<InstallPlan, NixInstallerError> {
+    pub fn plan(self) -> Result<InstallPlan, NixInstallerError> {
         match self {
-            BuiltinPlanner::Linux(planner) => InstallPlan::plan(planner).await,
-            BuiltinPlanner::SteamDeck(planner) => InstallPlan::plan(planner).await,
-            BuiltinPlanner::Ostree(planner) => InstallPlan::plan(planner).await,
-            BuiltinPlanner::Macos(planner) => InstallPlan::plan(planner).await,
+            BuiltinPlanner::Linux(planner) => InstallPlan::plan(planner),
+            BuiltinPlanner::SteamDeck(planner) => InstallPlan::plan(planner),
+            BuiltinPlanner::Ostree(planner) => InstallPlan::plan(planner),
+            BuiltinPlanner::Macos(planner) => InstallPlan::plan(planner),
         }
     }
     pub fn boxed(self) -> Box<dyn Planner> {

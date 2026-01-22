@@ -1,4 +1,6 @@
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::{
     action::{common::ConfigureNix, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -6,7 +8,6 @@ use crate::{
     set_env,
 };
 
-use tokio::{io::AsyncWriteExt, process::Command};
 use tracing::{span, Span};
 
 use crate::action::{Action, ActionDescription};
@@ -22,12 +23,11 @@ pub struct SetupDefaultProfile {
 
 impl SetupDefaultProfile {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
         Ok(Self { unpacked_path }.into())
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "setup_default_profile")]
 impl Action for SetupDefaultProfile {
     fn action_tag() -> ActionTag {
@@ -50,9 +50,8 @@ impl Action for SetupDefaultProfile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
-        let (nix_pkg, nss_ca_cert_pkg) =
-            ConfigureNix::find_nix_and_ca_cert(&self.unpacked_path).await?;
+    fn execute(&mut self) -> Result<(), ActionError> {
+        let (nix_pkg, nss_ca_cert_pkg) = ConfigureNix::find_nix_and_ca_cert(&self.unpacked_path)?;
         let found_nix_paths = glob::glob(&format!("{}/nix-*", self.unpacked_path.display()))
             .map_err(Self::error)?
             .collect::<Result<Vec<_>, _>>()
@@ -62,12 +61,10 @@ impl Action for SetupDefaultProfile {
         }
         let found_nix_path = found_nix_paths.into_iter().next().unwrap();
         let reginfo_path = found_nix_path.join(".reginfo");
-        let reginfo = tokio::fs::read(&reginfo_path)
-            .await
+        let reginfo = std::fs::read(&reginfo_path)
             .map_err(|e| ActionErrorKind::Read(reginfo_path.to_path_buf(), e))
             .map_err(Self::error)?;
         let mut load_db_command = Command::new(nix_pkg.join("bin/nix-store"));
-        load_db_command.process_group(0);
         load_db_command.arg("--load-db");
         load_db_command.stdin(std::process::Stdio::piped());
         load_db_command.stdout(std::process::Stdio::piped());
@@ -78,7 +75,7 @@ impl Action for SetupDefaultProfile {
         );
         tracing::trace!(
             "Executing `{:?}` with stdin from `{}`",
-            load_db_command.as_std(),
+            load_db_command,
             reginfo_path.display()
         );
         let mut handle = load_db_command
@@ -89,12 +86,10 @@ impl Action for SetupDefaultProfile {
         let mut stdin = handle.stdin.take().unwrap();
         stdin
             .write_all(&reginfo)
-            .await
             .map_err(|e| ActionErrorKind::Write(PathBuf::from("/dev/stdin"), e))
             .map_err(Self::error)?;
         stdin
             .flush()
-            .await
             .map_err(|e| ActionErrorKind::Write(PathBuf::from("/dev/stdin"), e))
             .map_err(Self::error)?;
         drop(stdin);
@@ -105,7 +100,6 @@ impl Action for SetupDefaultProfile {
 
         let output = handle
             .wait_with_output()
-            .await
             .map_err(|e| ActionErrorKind::command(&load_db_command, e))
             .map_err(Self::error)?;
         if !output.status.success() {
@@ -124,7 +118,6 @@ impl Action for SetupDefaultProfile {
         };
         profile
             .install_packages(WriteToDefaultProfile::WriteToDefault)
-            .await
             .map_err(SetupDefaultProfileError::NixProfile)
             .map_err(Self::error)?;
 
@@ -144,7 +137,7 @@ impl Action for SetupDefaultProfile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         std::env::remove_var("NIX_SSL_CERT_FILE");
 
         Ok(())
