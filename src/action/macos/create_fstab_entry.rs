@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use tracing::{span, Span};
-use uuid::Uuid;
 
 use super::get_disk_info_for_label;
 use crate::action::{
@@ -159,7 +158,8 @@ impl Action for CreateFstabEntry {
     }
 }
 
-fn fstab_entry(uuid: &Uuid) -> String {
+fn fstab_entry(uuid: &str) -> String {
+    let uuid = uuid.to_lowercase();
     format!("UUID={uuid} /nix apfs rw,noatime,noauto,nobrowse,nosuid,owners # Added by the Determinate Nix Installer")
 }
 

@@ -86,7 +86,7 @@ impl CreateVolumeService {
                     let expected_plist = generate_mount_plist(
                         &this.mount_service_label,
                         &this.apfs_volume_label,
-                        disk_info.volume_uuid,
+                        &disk_info.volume_uuid,
                         &this.mount_point,
                         encrypt,
                     )
@@ -203,7 +203,7 @@ impl Action for CreateVolumeService {
         let generated_plist = generate_mount_plist(
             mount_service_label,
             apfs_volume_label,
-            disk_info.volume_uuid,
+            &disk_info.volume_uuid,
             mount_point,
             *encrypt,
         )
@@ -244,14 +244,14 @@ impl Action for CreateVolumeService {
 fn generate_mount_plist(
     mount_service_label: &str,
     apfs_volume_label: &str,
-    uuid: uuid::Uuid,
+    uuid: &str,
     mount_point: &Path,
     encrypt: bool,
 ) -> Result<LaunchctlMountPlist, ActionErrorKind> {
     let apfs_volume_label_with_quotes = format!("\"{apfs_volume_label}\"");
     let nix_store_with_quotes = format!("\"{KEYCHAIN_NIX_STORE_SERVICE}\"");
     // The official Nix scripts uppercase the UUID, so we do as well for compatibility.
-    let uuid_string = uuid.to_string().to_uppercase();
+    let uuid_string = uuid.to_uppercase();
     let mount_command = if encrypt {
         let encrypted_command = format!("/usr/bin/security find-generic-password -a {apfs_volume_label_with_quotes} -s {nix_store_with_quotes} -w | /usr/sbin/diskutil apfs unlockVolume {apfs_volume_label_with_quotes} -mountpoint {mount_point:?} -stdinpassphrase");
         vec!["/bin/sh".into(), "-c".into(), encrypted_command]

@@ -35,7 +35,6 @@ use serde::Deserialize;
 pub use set_tmutil_exclusion::SetTmutilExclusion;
 pub use set_tmutil_exclusions::SetTmutilExclusions;
 pub use unmount_apfs_volume::UnmountApfsVolume;
-use uuid::Uuid;
 
 use crate::execute_command;
 
@@ -85,7 +84,7 @@ pub(crate) fn get_disk_info_for_label(
 #[serde(rename_all = "PascalCase")]
 pub(crate) struct DiskUtilApfsInfoOutput {
     #[serde(rename = "VolumeUUID")]
-    volume_uuid: Uuid,
+    volume_uuid: String,
     pub(crate) file_vault: bool,
 }
 
