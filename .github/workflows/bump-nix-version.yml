@@ -22,7 +22,7 @@ jobs:
         uses: ./
 
       - name: Setup Cachix
-        uses: cachix/cachix-action@v15
+        uses: cachix/cachix-action@v16
         with:
           name: nix-installer
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
