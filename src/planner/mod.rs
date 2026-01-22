@@ -72,7 +72,7 @@ impl Planner for MyPlanner {
     async fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
-            OperatingSystem::MacOSX { .. } | OperatingSystem::Darwin => Ok(()),
+            OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => Ok(()),
             host_os => Err(PlannerError::IncompatibleOperatingSystem {
                 planner: self.typetag_name(),
                 host_os,
@@ -183,12 +183,12 @@ impl BuiltinPlanner {
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
                 Ok(Self::Linux(linux::Linux::default().await?))
             },
-            (Architecture::X86_64, OperatingSystem::MacOSX { .. })
-            | (Architecture::X86_64, OperatingSystem::Darwin) => {
+            (Architecture::X86_64, OperatingSystem::MacOSX(_))
+            | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
                 Ok(Self::Macos(macos::Macos::default().await?))
             },
-            (Architecture::Aarch64(_), OperatingSystem::MacOSX { .. })
-            | (Architecture::Aarch64(_), OperatingSystem::Darwin) => {
+            (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
+            | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => {
                 Ok(Self::Macos(macos::Macos::default().await?))
             },
             _ => Err(PlannerError::UnsupportedArchitecture(target_lexicon::HOST)),

@@ -28,13 +28,17 @@ const NIX_CONF_COMMENT_CHAR: char = '#';
 pub enum CreateOrMergeNixConfigError {
     #[error(transparent)]
     ParseNixConfig(#[from] nix_config_parser::ParseError),
-    #[error("Could not merge Nix configuration for key(s) {}; consider removing them from `{1}` in your editor, or removing your existing configuration with `rm {1}`",
-        .0
+    #[error("Could not merge Nix configuration for key(s) {keys}; consider removing them from `{path}` in your editor, or removing your existing configuration with `rm {path}`",
+        keys = keys
         .iter()
         .map(|v| format!("`{v}`"))
         .collect::<Vec<_>>()
-        .join(", "))]
-    UnmergeableConfig(Vec<String>, std::path::PathBuf),
+        .join(", "),
+        path = path.display())]
+    UnmergeableConfig {
+        keys: Vec<String>,
+        path: std::path::PathBuf,
+    },
 }
 
 impl From<CreateOrMergeNixConfigError> for ActionErrorKind {
@@ -140,10 +144,10 @@ impl CreateOrMergeNixConfig {
         }
 
         if !unmergeable_config_names.is_empty() {
-            return Err(CreateOrMergeNixConfigError::UnmergeableConfig(
-                unmergeable_config_names,
-                path.to_path_buf(),
-            ));
+            return Err(CreateOrMergeNixConfigError::UnmergeableConfig {
+                keys: unmergeable_config_names,
+                path: path.to_path_buf(),
+            });
         }
 
         Ok((merged_nix_config, existing_nix_config.clone()))
@@ -690,7 +694,7 @@ mod test {
             Err(err) => {
                 if let ActionErrorKind::Custom(e) = err.kind() {
                     match e.downcast_ref::<CreateOrMergeNixConfigError>() {
-                        Some(CreateOrMergeNixConfigError::UnmergeableConfig(_, path)) => {
+                        Some(CreateOrMergeNixConfigError::UnmergeableConfig { path, .. }) => {
                             assert_eq!(path, test_file.as_path())
                         },
                         _ => {
