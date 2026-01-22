@@ -1084,7 +1084,6 @@ dependencies = [
  "indexmap 2.13.0",
  "nix",
  "nix-config-parser",
- "once_cell",
  "os-release",
  "owo-colors",
  "plist",
