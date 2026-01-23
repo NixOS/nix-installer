@@ -206,7 +206,7 @@
         in
         {
           default = pkgs.mkShell {
-            name = "nix-install-shell";
+            name = "nix-install";
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
             NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
