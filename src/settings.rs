@@ -203,28 +203,16 @@ pub(crate) fn default_nix_build_group_id() -> u32 {
 
 impl CommonSettings {
     /// The default settings for the given Architecture & Operating System
-    pub fn default() -> Result<Self, InstallSettingsError> {
-        let nix_build_user_prefix;
-
+    pub fn try_default() -> Result<Self, InstallSettingsError> {
         use target_lexicon::{Architecture, OperatingSystem};
-        match (Architecture::host(), OperatingSystem::host()) {
-            (Architecture::X86_64, OperatingSystem::Linux) => {
-                nix_build_user_prefix = "nixbld";
-            },
-            (Architecture::X86_32(_), OperatingSystem::Linux) => {
-                nix_build_user_prefix = "nixbld";
-            },
-            (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                nix_build_user_prefix = "nixbld";
-            },
+        let nix_build_user_prefix = match (Architecture::host(), OperatingSystem::host()) {
+            (Architecture::X86_64, OperatingSystem::Linux) => "nixbld",
+            (Architecture::X86_32(_), OperatingSystem::Linux) => "nixbld",
+            (Architecture::Aarch64(_), OperatingSystem::Linux) => "nixbld",
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
-            | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
-                nix_build_user_prefix = "_nixbld";
-            },
+            | (Architecture::X86_64, OperatingSystem::Darwin(_)) => "_nixbld",
             (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
-            | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => {
-                nix_build_user_prefix = "_nixbld";
-            },
+            | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => "_nixbld",
             _ => {
                 return Err(InstallSettingsError::UnsupportedArchitecture(
                     target_lexicon::HOST,
@@ -351,7 +339,7 @@ pub struct InitSettings {
 
 impl InitSettings {
     /// The default settings for the given Architecture & Operating System
-    pub fn default() -> Result<Self, InstallSettingsError> {
+    pub fn try_default() -> Result<Self, InstallSettingsError> {
         use target_lexicon::{Architecture, OperatingSystem};
         let (init, start_daemon) = match (Architecture::host(), OperatingSystem::host()) {
             (Architecture::X86_64, OperatingSystem::Linux) => {

@@ -35,7 +35,7 @@ impl CommandExecute for Plan {
 
         let planner = match planner {
             Some(planner) => planner,
-            None => BuiltinPlanner::default()?,
+            None => BuiltinPlanner::try_default()?,
         };
 
         let res = planner.plan();

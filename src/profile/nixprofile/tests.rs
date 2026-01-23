@@ -14,10 +14,10 @@ fn should_skip() -> bool {
         .output();
 
     if cmdret.is_ok() {
-        return false;
+        false
     } else {
         println!("Skipping this test because nix isn't in PATH");
-        return true;
+        true
     }
 }
 
@@ -31,6 +31,7 @@ fn sample_tree(dirname: &str, filename: &str, content: &str) -> PathBuf {
 
     let mut f = std::fs::File::options()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&file)
         .unwrap();
@@ -40,7 +41,7 @@ fn sample_tree(dirname: &str, filename: &str, content: &str) -> PathBuf {
     let mut cmdret = std::process::Command::new("nix")
         .set_nix_options(Path::new("/dev/null"))
         .unwrap()
-        .args(&["store", "add"])
+        .args(["store", "add"])
         .arg(&sub_dir)
         .output()
         .unwrap();

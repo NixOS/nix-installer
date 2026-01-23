@@ -19,7 +19,7 @@ it, uninstalling if anything goes wrong:
 use std::error::Error;
 use nix_installer::InstallPlan;
 # fn default_install() -> color_eyre::Result<()> {
-let mut plan = InstallPlan::default()?;
+let mut plan = InstallPlan::try_default()?;
 match plan.install(None) {
     Ok(()) => tracing::info!("Done"),
     Err(e) => {
@@ -41,11 +41,11 @@ use nix_installer::{InstallPlan, planner::Planner};
 
 # fn chosen_planner_install() -> color_eyre::Result<()> {
 #[cfg(target_os = "linux")]
-let planner = nix_installer::planner::steam_deck::SteamDeck::default()?;
+let planner = nix_installer::planner::steam_deck::SteamDeck::try_default()?;
 #[cfg(target_os = "macos")]
-let planner = nix_installer::planner::macos::Macos::default()?;
+let planner = nix_installer::planner::macos::Macos::try_default()?;
 
-// Or call `crate::planner::BuiltinPlanner::default()`
+// Or call `crate::planner::BuiltinPlanner::try_default()`
 // Match on the result to customize.
 
 // Customize any settings...
@@ -115,5 +115,7 @@ fn execute_command(command: &mut Command) -> Result<Output, ActionErrorKind> {
 ))]
 fn set_env(k: impl AsRef<OsStr>, v: impl AsRef<OsStr>) {
     tracing::trace!("Setting env");
-    std::env::set_var(k.as_ref(), v.as_ref());
+    // SAFETY: This is called during single-threaded initialization before
+    // any concurrent access to the environment occurs.
+    unsafe { std::env::set_var(k.as_ref(), v.as_ref()) };
 }

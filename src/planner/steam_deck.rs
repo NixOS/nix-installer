@@ -137,10 +137,10 @@ pub struct SteamDeck {
 
 #[typetag::serde(name = "steam-deck")]
 impl Planner for SteamDeck {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
             persistence: PathBuf::from("/home/nix"),
-            settings: CommonSettings::default()?,
+            settings: CommonSettings::try_default()?,
         })
     }
 
@@ -172,7 +172,7 @@ impl Planner for SteamDeck {
                 )));
             };
             actions.push(
-                CreateDirectory::plan(&persistence, None, None, 0o0755, true)
+                CreateDirectory::plan(persistence, None, None, 0o0755, true)
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -254,8 +254,8 @@ impl Planner for SteamDeck {
                 EnsureSteamosNixDirectory::plan().map_err(PlannerError::Action)?;
             actions.push(ensure_steamos_nix_directory.boxed());
 
-            let start_nix_mount = StartSystemdUnit::plan("nix.mount".to_string(), true)
-                .map_err(PlannerError::Action)?;
+            let start_nix_mount =
+                StartSystemdUnit::plan("nix.mount", true).map_err(PlannerError::Action)?;
             actions.push(start_nix_mount.boxed());
         }
 
@@ -323,7 +323,7 @@ impl Planner for SteamDeck {
 
         if requires_nix_bind_mount {
             actions.push(
-                StartSystemdUnit::plan("nix.mount".to_string(), false)
+                StartSystemdUnit::plan("nix.mount", false)
                     .map_err(PlannerError::Action)?
                     .boxed(),
             )
@@ -343,7 +343,7 @@ impl Planner for SteamDeck {
             ConfigureUpstreamInitService::plan(InitSystem::Systemd, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service".to_string(), true)
+            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service", true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
@@ -373,7 +373,7 @@ impl Planner for SteamDeck {
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();

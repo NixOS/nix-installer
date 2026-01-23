@@ -197,7 +197,7 @@ impl Action for CreateOrInsertIntoFile {
         // atomically
         let parent_dir = path.parent().expect("File must be in a directory");
         if !parent_dir.exists() {
-            std::fs::create_dir_all(&parent_dir)
+            std::fs::create_dir_all(parent_dir)
                 .map_err(|e| ActionErrorKind::CreateDirectory(parent_dir.to_owned(), e))
                 .map_err(Self::error)?;
         }

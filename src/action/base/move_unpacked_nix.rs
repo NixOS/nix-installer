@@ -110,7 +110,7 @@ impl Action for MoveUnpackedNix {
                 }
             }
             tracing::trace!(src = %entry.path().display(), dest = %entry_dest.display(), "Renaming");
-            std::fs::rename(&entry.path(), &entry_dest)
+            std::fs::rename(entry.path(), &entry_dest)
                 .map_err(|e| ActionErrorKind::Rename(entry.path(), entry_dest.to_owned(), e))
                 .map_err(Self::error)?;
 

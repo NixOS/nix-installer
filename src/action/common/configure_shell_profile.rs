@@ -91,13 +91,8 @@ impl ConfigureShellProfile {
             // Some tools (eg `nix-darwin`) create symlinks to these files, don't write to them if that's the case.
             if !profile_target.is_symlink() {
                 if let Some(conf_d) = profile_target.parent() {
-                    create_directories.push(CreateDirectory::plan(
-                        conf_d.to_path_buf(),
-                        None,
-                        None,
-                        0o755,
-                        false,
-                    )?);
+                    create_directories
+                        .push(CreateDirectory::plan(conf_d, None, None, 0o755, false)?);
                 }
 
                 create_or_insert_files.push(CreateOrInsertIntoFile::plan(
@@ -122,13 +117,7 @@ impl ConfigureShellProfile {
             profile_target.push(locations.fish.vendor_confd_suffix.clone());
 
             if let Some(conf_d) = profile_target.parent() {
-                create_directories.push(CreateDirectory::plan(
-                    conf_d.to_path_buf(),
-                    None,
-                    None,
-                    0o755,
-                    false,
-                )?);
+                create_directories.push(CreateDirectory::plan(conf_d, None, None, 0o755, false)?);
             }
 
             create_or_insert_files.push(CreateOrInsertIntoFile::plan(

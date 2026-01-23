@@ -4,7 +4,7 @@ It's a [`Planner`]s job to construct (if possible) a valid [`InstallPlan`] for t
 
 [`Planner`]s contain their planner specific settings, typically alongside a [`CommonSettings`].
 
-[`BuiltinPlanner::default()`] offers a way to get the default builtin planner for a given host.
+[`BuiltinPlanner::try_default()`] offers a way to get the default builtin planner for a given host.
 
 Custom Planners can also be used to create a platform, project, or organization specific install.
 
@@ -28,9 +28,9 @@ pub struct MyPlanner {
 
 #[typetag::serde(name = "my-planner")]
 impl Planner for MyPlanner {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
-            common: CommonSettings::default()?,
+            common: CommonSettings::try_default()?,
         })
     }
 
@@ -56,7 +56,7 @@ impl Planner for MyPlanner {
     fn configured_settings(
         &self,
     ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -82,7 +82,7 @@ impl Planner for MyPlanner {
 }
 
 # fn custom_planner_install() -> color_eyre::Result<()> {
-let planner = MyPlanner::default()?;
+let planner = MyPlanner::try_default()?;
 let mut plan = InstallPlan::plan(planner)?;
 match plan.install(None) {
     Ok(()) => tracing::info!("Done"),
@@ -141,7 +141,7 @@ use crate::{
 #[typetag::serde(tag = "planner")]
 pub trait Planner: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
     /// Instantiate the planner with default settings, if possible
-    fn default() -> Result<Self, PlannerError>
+    fn try_default() -> Result<Self, PlannerError>
     where
         Self: Sized;
     /// Plan out the [`Action`]s for an [`InstallPlan`]
@@ -192,23 +192,23 @@ pub enum BuiltinPlanner {
 
 impl BuiltinPlanner {
     /// Heuristically determine the default planner for the target system
-    pub fn default() -> Result<Self, PlannerError> {
+    pub fn try_default() -> Result<Self, PlannerError> {
         use target_lexicon::{Architecture, OperatingSystem};
         match (Architecture::host(), OperatingSystem::host()) {
             (Architecture::X86_64, OperatingSystem::Linux) => Self::detect_linux_distro(),
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::default()?))
+                Ok(Self::Linux(linux::Linux::try_default()?))
             },
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::default()?))
+                Ok(Self::Linux(linux::Linux::try_default()?))
             },
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
-                Ok(Self::Macos(macos::Macos::default()?))
+                Ok(Self::Macos(macos::Macos::try_default()?))
             },
             (Architecture::Aarch64(_), OperatingSystem::MacOSX(_))
             | (Architecture::Aarch64(_), OperatingSystem::Darwin(_)) => {
-                Ok(Self::Macos(macos::Macos::default()?))
+                Ok(Self::Macos(macos::Macos::try_default()?))
             },
             _ => Err(PlannerError::UnsupportedArchitecture(target_lexicon::HOST)),
         }
@@ -219,7 +219,7 @@ impl BuiltinPlanner {
             .map(|id| id == "steamos")
             .unwrap_or(false);
         if is_steam_deck {
-            return Ok(Self::SteamDeck(steam_deck::SteamDeck::default()?));
+            return Ok(Self::SteamDeck(steam_deck::SteamDeck::try_default()?));
         }
 
         let is_ostree = std::process::Command::new("ostree")
@@ -228,14 +228,14 @@ impl BuiltinPlanner {
             .output()
             .is_ok_and(|output| output.status.success());
         if is_ostree {
-            return Ok(Self::Ostree(ostree::Ostree::default()?));
+            return Ok(Self::Ostree(ostree::Ostree::try_default()?));
         }
 
-        Ok(Self::Linux(linux::Linux::default()?))
+        Ok(Self::Linux(linux::Linux::try_default()?))
     }
 
     pub fn from_common_settings(settings: CommonSettings) -> Result<Self, PlannerError> {
-        let mut built = Self::default()?;
+        let mut built = Self::try_default()?;
         match &mut built {
             BuiltinPlanner::Linux(inner) => inner.settings = settings,
             BuiltinPlanner::SteamDeck(inner) => inner.settings = settings,

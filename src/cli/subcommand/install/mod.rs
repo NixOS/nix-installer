@@ -88,7 +88,7 @@ impl CommandExecute for Install {
             true => {
                 tracing::trace!("Reading existing receipt");
                 let install_plan_string =
-                    std::fs::read_to_string(&RECEIPT_LOCATION).wrap_err("Reading plan")?;
+                    std::fs::read_to_string(RECEIPT_LOCATION).wrap_err("Reading plan")?;
                 Some(
                     serde_json::from_str(&install_plan_string).wrap_err_with(|| {
                         format!("Unable to parse existing receipt `{RECEIPT_LOCATION}`, it may be from an incompatible version of `nix-installer`. Try running `/nix/nix-installer uninstall`, then installing again.")

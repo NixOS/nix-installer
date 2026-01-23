@@ -2,7 +2,7 @@
 name = "nix-installer"
 description = "Experimental Nix Installer"
 version = "2.33.1"
-edition = "2021"
+edition = "2024"
 resolver = "2"
 license = "LGPL-2.1"
 repository = "https://github.com/NixOS/nix-installer"

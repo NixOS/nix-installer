@@ -41,7 +41,7 @@ impl UnitSrc {
             UnitSrc::Literal(content) => {
                 tracing::trace!(src = %content, dest = %dest.display(), "Writing");
 
-                std::fs::write(&dest, content)
+                std::fs::write(dest, content)
                     .map_err(|e| ActionErrorKind::Write(dest.to_path_buf(), e))?;
             },
         }
@@ -300,7 +300,7 @@ impl Action for ConfigureInitService {
                         UnitSrc::Literal(content) => {
                             tracing::trace!(src = %content, dest = %service_dest.display(), "Writing");
 
-                            std::fs::write(&service_dest, content)
+                            std::fs::write(service_dest, content)
                                 .map_err(|e| ActionErrorKind::Write(service_dest.clone(), e))
                                 .map_err(Self::error)?;
                         },
@@ -414,7 +414,7 @@ impl Action for ConfigureInitService {
                         UnitSrc::Literal(content) => {
                             tracing::trace!(src = %content, dest = %dest.display(), "Writing");
 
-                            std::fs::write(&dest, content)
+                            std::fs::write(dest, content)
                                 .map_err(|e| ActionErrorKind::Write(dest.clone(), e))
                                 .map_err(Self::error)?;
                         },

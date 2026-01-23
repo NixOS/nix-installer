@@ -115,9 +115,9 @@ pub struct MyPlanner {
 
 #[typetag::serde(name = "my-planner")]
 impl Planner for MyPlanner {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
-            common: CommonSettings::default()?,
+            common: CommonSettings::try_default()?,
         })
     }
 
@@ -141,7 +141,7 @@ impl Planner for MyPlanner {
     fn configured_settings(
         &self,
     ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -167,7 +167,7 @@ impl Planner for MyPlanner {
 }
 
 # fn custom_planner_install() -> color_eyre::Result<()> {
-let planner = MyPlanner::default()?;
+let planner = MyPlanner::try_default()?;
 let mut plan = InstallPlan::plan(planner)?;
 match plan.install(None) {
     Ok(()) => tracing::info!("Done"),
