@@ -2,15 +2,15 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 use crate::{
+    NixInstallerError,
     action::{Action, ActionDescription, StatefulAction},
     planner::{BuiltinPlanner, Planner},
-    NixInstallerError,
 };
 use owo_colors::OwoColorize;
 use semver::{Version, VersionReq};
@@ -39,8 +39,8 @@ pub struct InstallPlan {
 }
 
 impl InstallPlan {
-    pub fn default() -> Result<Self, NixInstallerError> {
-        let planner = BuiltinPlanner::default()?;
+    pub fn try_default() -> Result<Self, NixInstallerError> {
+        let planner = BuiltinPlanner::try_default()?;
 
         let planner = planner.boxed();
         let actions = planner.plan()?;
@@ -354,7 +354,7 @@ pub(crate) fn write_receipt(
         .map_err(|e| NixInstallerError::RecordingReceipt(PathBuf::from("/nix"), e))?;
     std::fs::write(&install_receipt_path_tmp, format!("{self_json}\n"))
         .map_err(|e| NixInstallerError::RecordingReceipt(install_receipt_path_tmp.clone(), e))?;
-    std::fs::rename(&install_receipt_path_tmp, &install_receipt_path)
+    std::fs::rename(&install_receipt_path_tmp, install_receipt_path)
         .map_err(|e| NixInstallerError::RecordingReceipt(install_receipt_path.to_path_buf(), e))?;
 
     Ok(())
@@ -371,11 +371,11 @@ pub fn current_version() -> Result<Version, NixInstallerError> {
 mod test {
     use semver::Version;
 
-    use crate::{planner::BuiltinPlanner, InstallPlan, NixInstallerError};
+    use crate::{InstallPlan, NixInstallerError, planner::BuiltinPlanner};
 
     #[test]
     fn ensure_version_allows_compatible() -> Result<(), NixInstallerError> {
-        let planner = BuiltinPlanner::default()?;
+        let planner = BuiltinPlanner::try_default()?;
         let good_version = Version::parse(env!("CARGO_PKG_VERSION"))?;
         let value = serde_json::json!({
             "planner": planner.boxed(),
@@ -389,7 +389,7 @@ mod test {
 
     #[test]
     fn ensure_version_denies_incompatible() -> Result<(), NixInstallerError> {
-        let planner = BuiltinPlanner::default()?;
+        let planner = BuiltinPlanner::try_default()?;
         let bad_version = Version::parse("9999999999999.9999999999.99999999")?;
         let value = serde_json::json!({
             "planner": planner.boxed(),

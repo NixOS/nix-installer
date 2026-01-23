@@ -1,26 +1,26 @@
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::{CreateDirectory, CreateFile, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         linux::{
-            provision_selinux::SELINUX_POLICY_PP_CONTENT, ProvisionSelinux, StartSystemdUnit,
-            SystemctlDaemonReload,
+            ProvisionSelinux, StartSystemdUnit, SystemctlDaemonReload,
+            provision_selinux::SELINUX_POLICY_PP_CONTENT,
         },
-        StatefulAction,
     },
     error::HasExpectedErrors,
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
-    Action, BuiltinPlanner,
 };
 use std::{collections::HashMap, path::PathBuf};
 
 use super::{
+    ShellProfileLocations,
     linux::{
         check_nix_not_already_installed, check_not_nixos, check_not_wsl1, check_systemd_active,
         detect_selinux,
     },
-    ShellProfileLocations,
 };
 
 /// A planner suitable for immutable systems using ostree, such as Fedora Silverblue
@@ -36,10 +36,10 @@ pub struct Ostree {
 
 #[typetag::serde(name = "ostree")]
 impl Planner for Ostree {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
             persistence: PathBuf::from("/var/home/nix"),
-            settings: CommonSettings::default()?,
+            settings: CommonSettings::try_default()?,
         })
     }
 
@@ -161,7 +161,7 @@ impl Planner for Ostree {
         }
 
         plan.push(
-            StartSystemdUnit::plan("nix.mount".to_string(), false)
+            StartSystemdUnit::plan("nix.mount", false)
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -205,7 +205,7 @@ impl Planner for Ostree {
                 .boxed(),
         );
         plan.push(
-            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service".to_string(), true)
+            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service", true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -240,7 +240,7 @@ impl Planner for Ostree {
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();

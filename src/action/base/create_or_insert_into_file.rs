@@ -1,4 +1,4 @@
-use nix::unistd::{chown, Group, User};
+use nix::unistd::{Group, User, chown};
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -11,7 +11,7 @@ use std::{
     os::{unix::fs::MetadataExt, unix::fs::OpenOptionsExt, unix::prelude::PermissionsExt},
     path::{Path, PathBuf},
 };
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
 pub enum Position {
@@ -197,7 +197,7 @@ impl Action for CreateOrInsertIntoFile {
         // atomically
         let parent_dir = path.parent().expect("File must be in a directory");
         if !parent_dir.exists() {
-            std::fs::create_dir_all(&parent_dir)
+            std::fs::create_dir_all(parent_dir)
                 .map_err(|e| ActionErrorKind::CreateDirectory(parent_dir.to_owned(), e))
                 .map_err(Self::error)?;
         }
@@ -549,13 +549,13 @@ mod test {
                 _ => {
                     return Err(eyre!(
                         "Should have returned an ActionErrorKind::PathWasNotFile error"
-                    ))
+                    ));
                 },
             },
             _ => {
                 return Err(eyre!(
                     "Should have returned an ActionErrorKind::PathWasNotFile error"
-                ))
+                ));
             },
         }
 

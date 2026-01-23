@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::{cli::CommandExecute, NixInstallerError};
+use crate::{NixInstallerError, cli::CommandExecute};
 
 /// Run a self test of Nix to ensure that an install is working
 #[derive(Debug, Parser)]

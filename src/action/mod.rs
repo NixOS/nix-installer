@@ -115,9 +115,9 @@ pub struct MyPlanner {
 
 #[typetag::serde(name = "my-planner")]
 impl Planner for MyPlanner {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
-            common: CommonSettings::default()?,
+            common: CommonSettings::try_default()?,
         })
     }
 
@@ -141,7 +141,7 @@ impl Planner for MyPlanner {
     fn configured_settings(
         &self,
     ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -167,7 +167,7 @@ impl Planner for MyPlanner {
 }
 
 # fn custom_planner_install() -> color_eyre::Result<()> {
-let planner = MyPlanner::default()?;
+let planner = MyPlanner::try_default()?;
 let mut plan = InstallPlan::plan(planner)?;
 match plan.install(None) {
     Ok(()) => tracing::info!("Done"),
@@ -374,9 +374,7 @@ pub enum ActionErrorKind {
     }).collect::<Vec<_>>().join("\n"))]
     Multiple(Vec<ActionErrorKind>),
     /// The path already exists with different content that expected
-    #[error(
-        "`{0}` exists with different content than planned, consider removing it with `rm {0}`"
-    )]
+    #[error("`{0}` exists with different content than planned, consider removing it with `rm {0}`")]
     DifferentContent(std::path::PathBuf),
     /// The file already exists
     #[error("`{0}` already exists, consider removing it with `rm {0}`")]
@@ -387,9 +385,13 @@ pub enum ActionErrorKind {
     /// The symlink already exists
     #[error("`{0}` already exists, consider removing it with `rm {0}`")]
     SymlinkExists(std::path::PathBuf),
-    #[error("`{0}` exists with a different uid ({1}) than planned ({2}), consider updating it with `chown {2} {0}` (you may need to do this recursively with the `-R` flag)")]
+    #[error(
+        "`{0}` exists with a different uid ({1}) than planned ({2}), consider updating it with `chown {2} {0}` (you may need to do this recursively with the `-R` flag)"
+    )]
     PathUserMismatch(std::path::PathBuf, u32, u32),
-    #[error("`{0}` exists with a different gid ({1}) than planned ({2}), consider updating it with `chgrp {2} {0}` (you may need to do this recursively with the `-R` flag)")]
+    #[error(
+        "`{0}` exists with a different gid ({1}) than planned ({2}), consider updating it with `chgrp {2} {0}` (you may need to do this recursively with the `-R` flag)"
+    )]
     PathGroupMismatch(std::path::PathBuf, u32, u32),
     #[error("`{0}` exists with a different mode ({existing_mode:o}) than planned ({planned_mode:o}), consider updating it with `chmod {planned_mode:o} {0}` (you may need to do this recursively with the `-R` flag)",
         existing_mode = .1 & 0o777,
@@ -517,30 +519,44 @@ pub enum ActionErrorKind {
     /// A MacOS (Darwin) plist related error
     #[error(transparent)]
     Plist(#[from] plist::Error),
-    #[error("Unexpected binary tarball contents found, the build result from `https://releases.nixos.org/?prefix=nix/` or `nix build nix#hydraJobs.binaryTarball.$SYSTEM` is expected")]
+    #[error(
+        "Unexpected binary tarball contents found, the build result from `https://releases.nixos.org/?prefix=nix/` or `nix build nix#hydraJobs.binaryTarball.$SYSTEM` is expected"
+    )]
     MalformedBinaryTarball,
-    #[error("Could not find `{0}` in PATH; This action only works on SteamOS, which should have this present in PATH.")]
+    #[error(
+        "Could not find `{0}` in PATH; This action only works on SteamOS, which should have this present in PATH."
+    )]
     MissingSteamosBinary(String),
     #[error(
         "Could not find a supported command to create users in PATH; please install `useradd` or `adduser`"
     )]
     MissingUserCreationCommand,
-    #[error("Could not find a supported command to create groups in PATH; please install `groupadd` or `addgroup`")]
+    #[error(
+        "Could not find a supported command to create groups in PATH; please install `groupadd` or `addgroup`"
+    )]
     MissingGroupCreationCommand,
-    #[error("Could not find a supported command to add users to groups in PATH; please install `gpasswd` or `addgroup`")]
+    #[error(
+        "Could not find a supported command to add users to groups in PATH; please install `gpasswd` or `addgroup`"
+    )]
     MissingAddUserToGroupCommand,
     #[error(
         "Could not find a supported command to delete users in PATH; please install `userdel` or `deluser`"
     )]
     MissingUserDeletionCommand,
-    #[error("Could not find a supported command to delete groups in PATH; please install `groupdel` or `delgroup`")]
+    #[error(
+        "Could not find a supported command to delete groups in PATH; please install `groupdel` or `delgroup`"
+    )]
     MissingGroupDeletionCommand,
-    #[error("Could not find a supported command to remove users from groups in PATH; please install `gpasswd` or `deluser`")]
+    #[error(
+        "Could not find a supported command to remove users from groups in PATH; please install `gpasswd` or `deluser`"
+    )]
     MissingRemoveUserFromGroupCommand,
-    #[error("\
+    #[error(
+        "\
         Could not detect systemd; you may be able to get up and running without systemd with `nix-installer install linux --init none`.\n\
         See https://github.com/NixOS/nix-installer#without-systemd-linux-only for documentation on usage and drawbacks.\
-        ")]
+        "
+    )]
     SystemdMissing,
     #[error("`{command}` failed, message: {message}")]
     DiskUtilInfoError { command: String, message: String },

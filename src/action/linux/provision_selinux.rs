@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
@@ -72,7 +72,7 @@ impl Action for ProvisionSelinux {
         }
 
         if let Some(parent) = self.policy_path.parent() {
-            std::fs::create_dir_all(&parent)
+            std::fs::create_dir_all(parent)
                 .map_err(|e| ActionErrorKind::CreateDirectory(parent.into(), e))
                 .map_err(Self::error)?;
         }

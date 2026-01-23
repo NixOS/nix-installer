@@ -127,7 +127,7 @@ pub(crate) fn wait_for_nix_store_dir() -> Result<(), ActionErrorKind> {
         if output.status.success() {
             break;
         } else if retry_tokens == 0 {
-            return Err(ActionErrorKind::command_output(&command, output))?;
+            Err(ActionErrorKind::command_output(&command, output))?;
         } else {
             retry_tokens = retry_tokens.saturating_sub(1);
         }
@@ -178,7 +178,7 @@ pub(crate) fn retry_bootstrap(
         if output.status.success() {
             break;
         } else if retry_tokens == 0 {
-            return Err(ActionErrorKind::command_output(&command, output))?;
+            Err(ActionErrorKind::command_output(&command, output))?;
         } else {
             retry_tokens = retry_tokens.saturating_sub(1);
         }
@@ -227,7 +227,7 @@ pub(crate) fn retry_bootout(domain: &str, service_name: &str) -> Result<(), Acti
         if output.status.success() {
             break;
         } else if retry_tokens == 0 {
-            return Err(ActionErrorKind::command_output(&command, output))?;
+            Err(ActionErrorKind::command_output(&command, output))?;
         } else {
             retry_tokens = retry_tokens.saturating_sub(1);
         }
@@ -278,7 +278,7 @@ pub(crate) fn retry_kickstart(domain: &str, service_name: &str) -> Result<(), Ac
         if output.status.success() {
             break;
         } else if retry_tokens == 0 {
-            return Err(ActionErrorKind::command_output(&command, output))?;
+            Err(ActionErrorKind::command_output(&command, output))?;
         } else {
             retry_tokens = retry_tokens.saturating_sub(1);
         }

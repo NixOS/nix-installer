@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{Action, ActionDescription, ActionErrorKind, ActionState};
 use crate::action::{ActionError, StatefulAction};

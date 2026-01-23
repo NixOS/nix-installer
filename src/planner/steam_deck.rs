@@ -101,18 +101,18 @@ use std::{collections::HashMap, path::PathBuf, process::Output};
 use std::process::Command;
 
 use crate::{
+    BuiltinPlanner,
     action::{
+        Action, StatefulAction,
         base::{CreateDirectory, CreateFile, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         linux::{
             EnsureSteamosNixDirectory, RevertCleanSteamosNixOffload, StartSystemdUnit,
             SystemctlDaemonReload,
         },
-        Action, StatefulAction,
     },
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
-    BuiltinPlanner,
 };
 
 use super::ShellProfileLocations;
@@ -137,10 +137,10 @@ pub struct SteamDeck {
 
 #[typetag::serde(name = "steam-deck")]
 impl Planner for SteamDeck {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
             persistence: PathBuf::from("/home/nix"),
-            settings: CommonSettings::default()?,
+            settings: CommonSettings::try_default()?,
         })
     }
 
@@ -172,7 +172,7 @@ impl Planner for SteamDeck {
                 )));
             };
             actions.push(
-                CreateDirectory::plan(&persistence, None, None, 0o0755, true)
+                CreateDirectory::plan(persistence, None, None, 0o0755, true)
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -254,8 +254,8 @@ impl Planner for SteamDeck {
                 EnsureSteamosNixDirectory::plan().map_err(PlannerError::Action)?;
             actions.push(ensure_steamos_nix_directory.boxed());
 
-            let start_nix_mount = StartSystemdUnit::plan("nix.mount".to_string(), true)
-                .map_err(PlannerError::Action)?;
+            let start_nix_mount =
+                StartSystemdUnit::plan("nix.mount", true).map_err(PlannerError::Action)?;
             actions.push(start_nix_mount.boxed());
         }
 
@@ -323,7 +323,7 @@ impl Planner for SteamDeck {
 
         if requires_nix_bind_mount {
             actions.push(
-                StartSystemdUnit::plan("nix.mount".to_string(), false)
+                StartSystemdUnit::plan("nix.mount", false)
                     .map_err(PlannerError::Action)?
                     .boxed(),
             )
@@ -343,7 +343,7 @@ impl Planner for SteamDeck {
             ConfigureUpstreamInitService::plan(InitSystem::Systemd, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service".to_string(), true)
+            StartSystemdUnit::plan("ensure-symlinked-units-resolve.service", true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
@@ -373,7 +373,7 @@ impl Planner for SteamDeck {
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -429,13 +429,21 @@ impl From<SteamDeck> for BuiltinPlanner {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum SteamDeckError {
-    #[error("`{0}` is not a path that can be canonicalized into an absolute path, bind mounts require an absolute path")]
+    #[error(
+        "`{0}` is not a path that can be canonicalized into an absolute path, bind mounts require an absolute path"
+    )]
     AbsolutePathRequired(PathBuf),
-    #[error("A `/home/.steamos/offload/nix` exists, however `nix.mount` does not point at it. If Nix was previously installed, try uninstalling then rebooting first")]
+    #[error(
+        "A `/home/.steamos/offload/nix` exists, however `nix.mount` does not point at it. If Nix was previously installed, try uninstalling then rebooting first"
+    )]
     OffloadExistsButUnitIncorrect,
-    #[error("Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` did not return success. Try running `systemctl daemon-reload`.")]
+    #[error(
+        "Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` did not return success. Try running `systemctl daemon-reload`."
+    )]
     SteamosNixMountUnitNotExists,
-    #[error("Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` returned a warning that `systemctl daemon-reload` should be run. Run `systemctl daemon-reload` then `systemctl start nix.mount`, then try again.")]
+    #[error(
+        "Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` returned a warning that `systemctl daemon-reload` should be run. Run `systemctl daemon-reload` then `systemctl start nix.mount`, then try again."
+    )]
     NixMountSystemctlDaemonReloadRequired,
 }
 

@@ -9,34 +9,56 @@
     nix.url = "github:NixOS/nix/2.33.1";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
+
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , crane
-    , nix
-    , ...
+    {
+      self,
+      nixpkgs,
+      crane,
+      nix,
+      treefmt-nix,
+      ...
     }:
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
 
       forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: (forSystem system f));
 
-      forSystem = system: f: f rec {
-        inherit system;
-        pkgs = import nixpkgs { inherit system; overlays = [ self.overlays.default ]; };
-        lib = pkgs.lib;
-      };
+      forSystem =
+        system: f:
+        f rec {
+          inherit system;
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ self.overlays.default ];
+          };
+          lib = pkgs.lib;
+        };
+
+      # Eval the treefmt modules from ./treefmt.nix
+      treefmtEval = forAllSystems ({ pkgs, ... }: treefmt-nix.lib.evalModule pkgs ./treefmt.nix);
 
       # Build the nix binary tarball and recompress with zstd
       # This is similar to nix's packaging/binary-tarball.nix but outputs zstd
-      nixTarballZstd = { pkgs, system }:
+      nixTarballZstd =
+        { pkgs, system }:
         let
           nixPkg = nix.packages.${system}.nix;
           cacertPkg = pkgs.cacert;
           installerClosureInfo = pkgs.buildPackages.closureInfo {
-            rootPaths = [ nixPkg cacertPkg ];
+            rootPaths = [
+              nixPkg
+              cacertPkg
+            ];
           };
         in
         pkgs.runCommand "nix-tarball-zstd-${nixPkg.version}"
@@ -49,33 +71,44 @@
               cacertStorePath = cacertPkg.outPath;
               nixVersion = nixPkg.version;
             };
-          } ''
-          mkdir -p $out
+          }
+          ''
+            mkdir -p $out
 
-          dir=nix-${nixPkg.version}-${system}
+            dir=nix-${nixPkg.version}-${system}
 
-          # Copy the reginfo (closure registration) to temp dir
-          cp ${installerClosureInfo}/registration $TMPDIR/reginfo
+            # Copy the reginfo (closure registration) to temp dir
+            cp ${installerClosureInfo}/registration $TMPDIR/reginfo
 
-          # Create tarball matching nix's binary-tarball.nix structure
-          # Use --hard-dereference to convert symlinks to regular files
-          # Use --transform to rewrite /nix/store paths to $dir/store
-          tar cf - \
-            --owner=0 --group=0 --mode=u+rw,uga+r \
-            --mtime='1970-01-01' \
-            --absolute-names \
-            --hard-dereference \
-            --transform "s,$TMPDIR/reginfo,$dir/.reginfo," \
-            --transform "s,$NIX_STORE,$dir/store,S" \
-            $TMPDIR/reginfo \
-            $(cat ${installerClosureInfo}/store-paths) \
-            | zstd -19 -T0 -o $out/nix.tar.zst
-        '';
+            # Create tarball matching nix's binary-tarball.nix structure
+            # Use --hard-dereference to convert symlinks to regular files
+            # Use --transform to rewrite /nix/store paths to $dir/store
+            tar cf - \
+              --owner=0 --group=0 --mode=u+rw,uga+r \
+              --mtime='1970-01-01' \
+              --absolute-names \
+              --hard-dereference \
+              --transform "s,$TMPDIR/reginfo,$dir/.reginfo," \
+              --transform "s,$NIX_STORE,$dir/store,S" \
+              $TMPDIR/reginfo \
+              $(cat ${installerClosureInfo}/store-paths) \
+              | zstd -19 -T0 -o $out/nix.tar.zst
+          '';
 
-      installerPackage = { pkgs, stdenv, buildPackages, extraRustFlags ? "" }:
+      # Shared crane build setup - returns { package, clippy, cargoArtifacts }
+      mkCraneBuilds =
+        {
+          pkgs,
+          stdenv,
+          buildPackages,
+          extraRustFlags ? "",
+        }:
         let
           craneLib = crane.mkLib pkgs;
-          tarballPkg = nixTarballZstd { inherit pkgs; system = stdenv.hostPlatform.system; };
+          tarballPkg = nixTarballZstd {
+            inherit pkgs;
+            system = stdenv.hostPlatform.system;
+          };
           # Get paths directly from passthru - no IFD!
           nixStorePath = tarballPkg.passthru.nixStorePath;
           cacertStorePath = tarballPkg.passthru.cacertStorePath;
@@ -101,41 +134,74 @@
               "CXX_${stdenv.hostPlatform.rust.cargoEnvVarTarget}" = "${stdenv.cc.targetPrefix}c++";
               "CARGO_TARGET_${stdenv.hostPlatform.rust.cargoEnvVarTarget}_LINKER" = "${stdenv.cc.targetPrefix}cc";
               CARGO_BUILD_TARGET = stdenv.hostPlatform.rust.rustcTarget;
+              # Path to the embedded tarball
+              NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
+              # Store paths known at compile time (no IFD - these come from passthru)
+              NIX_STORE_PATH = nixStorePath;
+              NSS_CACERT_STORE_PATH = cacertStorePath;
+              NIX_VERSION = nixVersion;
             };
           };
-        in
-        craneLib.buildPackage (sharedAttrs // {
           cargoArtifacts = craneLib.buildDepsOnly sharedAttrs;
-          env = sharedAttrs.env // {
-            RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
-            # Path to the embedded tarball
-            NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
-            # Store paths known at compile time (no IFD - these come from passthru)
-            NIX_STORE_PATH = nixStorePath;
-            NSS_CACERT_STORE_PATH = cacertStorePath;
-            NIX_VERSION = nixVersion;
-          };
-          postInstall = ''
-            cp nix-installer.sh $out/bin/nix-installer.sh
-          '';
-        });
-    in
-    {
-      overlays.default = final: prev:
+        in
         {
-          nix-installer = installerPackage {
-            pkgs = final;
-            stdenv = final.stdenv;
-            buildPackages = final.buildPackages;
-          };
+          inherit cargoArtifacts;
 
-          nix-installer-static = final.pkgsStatic.callPackage installerPackage { };
+          package = craneLib.buildPackage (
+            sharedAttrs
+            // {
+              inherit cargoArtifacts;
+              env = sharedAttrs.env // {
+                RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
+              };
+              postInstall = ''
+                cp nix-installer.sh $out/bin/nix-installer.sh
+              '';
+            }
+          );
+
+          clippy = craneLib.cargoClippy (
+            sharedAttrs
+            // {
+              inherit cargoArtifacts;
+              cargoClippyExtraArgs = "--all-targets -- -D warnings";
+            }
+          );
         };
 
+      installerPackage =
+        {
+          pkgs,
+          stdenv,
+          buildPackages,
+          extraRustFlags ? "",
+        }:
+        (mkCraneBuilds {
+          inherit
+            pkgs
+            stdenv
+            buildPackages
+            extraRustFlags
+            ;
+        }).package;
+    in
+    {
+      # for `nix fmt`
+      formatter = forAllSystems ({ system, ... }: treefmtEval.${system}.config.build.wrapper);
 
-      devShells = forAllSystems ({ system, pkgs, ... }:
+      overlays.default = final: prev: {
+        nix-installer = installerPackage {
+          pkgs = final;
+          stdenv = final.stdenv;
+          buildPackages = final.buildPackages;
+        };
+
+        nix-installer-static = final.pkgsStatic.callPackage installerPackage { };
+      };
+
+      devShells = forAllSystems (
+        { system, pkgs, ... }:
         let
-          check = import ./nix/check.nix { inherit pkgs; };
           tarballPkg = nixTarballZstd { inherit pkgs system; };
         in
         {
@@ -148,119 +214,128 @@
             NSS_CACERT_STORE_PATH = tarballPkg.passthru.cacertStorePath;
             NIX_VERSION = tarballPkg.passthru.nixVersion;
 
-            buildInputs = with pkgs; [
-              rustc
-              cargo
-              clippy
-              rustfmt
-              shellcheck
-              rust-analyzer
-              cargo-outdated
-              cacert
-              # cargo-audit # NOTE(cole-h): build currently broken because of time dependency and Rust 1.80
-              cargo-watch
-              nixpkgs-fmt
-              check.check-rustfmt
-              check.check-spelling
-              check.check-nixpkgs-fmt
-              check.check-editorconfig
-              check.check-semver
-              check.check-clippy
-              editorconfig-checker
-              act
-            ]
-            ++ lib.optionals (pkgs.stdenv.isDarwin) (with pkgs; [
-              libiconv
-              darwin.apple_sdk.frameworks.Security
-              darwin.apple_sdk.frameworks.SystemConfiguration
-            ])
-            ++ lib.optionals (pkgs.stdenv.isLinux) (with pkgs; [
-              checkpolicy
-              semodule-utils
-              /* users are expected to have a system docker, too */
-            ]);
-          };
-        });
+            buildInputs =
+              with pkgs;
+              [
+                # Rust development
+                rustc
+                cargo
+                clippy
+                rust-analyzer
+                cargo-outdated
+                cargo-semver-checks
+                # cargo-audit # NOTE(cole-h): build currently broken because of time dependency and Rust 1.80
+                cargo-watch
+                cacert
 
-      checks = forAllSystems ({ pkgs, ... }:
+                # treefmt (for `nix fmt` and manual formatting)
+                treefmtEval.${system}.config.build.wrapper
+
+                # Testing
+                act
+              ]
+              ++ lib.optionals (pkgs.stdenv.isDarwin) (
+                with pkgs;
+                [
+                  libiconv
+                  darwin.apple_sdk.frameworks.Security
+                  darwin.apple_sdk.frameworks.SystemConfiguration
+                ]
+              )
+              ++ lib.optionals (pkgs.stdenv.isLinux) (
+                with pkgs;
+                [
+                  checkpolicy
+                  semodule-utils
+                  # users are expected to have a system docker, too
+                ]
+              );
+          };
+        }
+      );
+
+      checks = forAllSystems (
+        { system, pkgs, ... }:
         let
-          check = import ./nix/check.nix { inherit pkgs; };
+          craneBuilds = mkCraneBuilds {
+            inherit pkgs;
+            stdenv = pkgs.stdenv;
+            buildPackages = pkgs.buildPackages;
+          };
+
           # Extract version from Cargo.toml
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
           installerVersion = cargoToml.package.version;
-          nixVersion = nix.packages.${pkgs.system}.nix.version;
+          nixVersion = nix.packages.${system}.nix.version;
           # Extract major.minor from both versions
           versionParts = ver: builtins.match "([0-9]+)\\.([0-9]+).*" ver;
           installerMajorMinor = versionParts installerVersion;
           nixMajorMinor = versionParts nixVersion;
         in
         {
-          check-rustfmt = pkgs.runCommand "check-rustfmt" { buildInputs = [ check.check-rustfmt ]; } ''
-            cd ${./.}
-            check-rustfmt
-            touch $out
-          '';
-          check-spelling = pkgs.runCommand "check-spelling" { buildInputs = [ check.check-spelling ]; } ''
-            cd ${./.}
-            check-spelling
-            touch $out
-          '';
-          check-nixpkgs-fmt = pkgs.runCommand "check-nixpkgs-fmt" { buildInputs = [ check.check-nixpkgs-fmt ]; } ''
-            cd ${./.}
-            check-nixpkgs-fmt
-            touch $out
-          '';
-          check-editorconfig = pkgs.runCommand "check-editorconfig" { buildInputs = [ pkgs.git check.check-editorconfig ]; } ''
-            cd ${./.}
-            check-editorconfig
-            touch $out
-          '';
+          # treefmt handles: rustfmt, nixfmt, shfmt, shellcheck, typos, taplo, yamlfmt, actionlint, editorconfig
+          formatting = treefmtEval.${system}.config.build.check self;
+
           check-version-consistency =
-            assert installerMajorMinor == nixMajorMinor ||
-              throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nixVersion} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
+            assert
+              installerMajorMinor == nixMajorMinor
+              || throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nixVersion} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
             pkgs.runCommand "check-version-consistency" { } ''
               echo "Version consistency check passed: installer ${installerVersion} matches Nix ${nixVersion}"
               touch $out
             '';
-        });
 
-      packages = forAllSystems ({ system, pkgs, ... }:
+          inherit (craneBuilds) clippy;
+        }
+      );
+
+      packages = forAllSystems (
+        { system, pkgs, ... }:
         {
           inherit (pkgs) nix-installer;
-        } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        }
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
-        } // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
+        }
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
-        } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.isDarwin) {
+        }
+        // nixpkgs.lib.optionalAttrs (pkgs.stdenv.isDarwin) {
           default = pkgs.nix-installer;
-        });
+        }
+      );
 
-      apps = forAllSystems ({ pkgs, ... }: {
-        test-action = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "test-action" ''
-            set -e
-            echo "Testing GitHub Action with act..."
-            ${pkgs.act}/bin/act -W .github/workflows/act-test.yml -j test-release --pull=false
-          '');
-        };
-      });
+      apps = forAllSystems (
+        { pkgs, ... }:
+        {
+          test-action = {
+            type = "app";
+            program = toString (
+              pkgs.writeShellScript "test-action" ''
+                set -e
+                echo "Testing GitHub Action with act..."
+                ${pkgs.act}/bin/act -W .github/workflows/act-test.yml -j test-release --pull=false
+              ''
+            );
+          };
+        }
+      );
 
       hydraJobs = {
         build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
-        # vm-test = import ./nix/tests/vm-test {
-        #   inherit forSystem;
-        #   inherit (nixpkgs) lib;
+        #vm-test = import ./nix/tests/vm-test {
+        #  inherit forSystem;
+        #  inherit (nixpkgs) lib;
 
-        #   binaryTarball = nix.tarballs_indirect;
-        # };
-        # container-test = import ./nix/tests/container-test {
-        #   inherit forSystem;
+        #  binaryTarball = nix.tarballs_indirect;
+        #};
+        #container-test = import ./nix/tests/container-test {
+        #  inherit forSystem;
 
-        #   binaryTarball = nix.tarballs_indirect;
-        # };
+        #  binaryTarball = nix.tarballs_indirect;
+        #};
       };
     };
 }

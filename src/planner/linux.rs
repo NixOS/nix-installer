@@ -5,16 +5,16 @@ use std::process::Command;
 
 use super::ShellProfileLocations;
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::{CreateDirectory, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
-        linux::{provision_selinux::SELINUX_POLICY_PP_CONTENT, ProvisionSelinux},
-        StatefulAction,
+        linux::{ProvisionSelinux, provision_selinux::SELINUX_POLICY_PP_CONTENT},
     },
     error::HasExpectedErrors,
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSettings, InitSystem, InstallSettingsError},
-    Action, BuiltinPlanner,
 };
 
 pub const FHS_SELINUX_POLICY_PATH: &str = "/usr/share/selinux/packages/nix.pp";
@@ -31,39 +31,30 @@ pub struct Linux {
 
 #[typetag::serde(name = "linux")]
 impl Planner for Linux {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
-            settings: CommonSettings::default()?,
-            init: InitSettings::default()?,
+            settings: CommonSettings::try_default()?,
+            init: InitSettings::try_default()?,
         })
     }
 
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         let has_selinux = detect_selinux()?;
 
-        let mut plan = vec![];
-
-        plan.push(
+        let mut plan = vec![
             CreateDirectory::plan("/nix", None, None, 0o0755, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        plan.push(
             ProvisionNix::plan(&self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        plan.push(
             CreateUsersAndGroups::plan(self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        plan.push(
             ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
+        ];
 
         if has_selinux {
             plan.push(
@@ -73,22 +64,17 @@ impl Planner for Linux {
             );
         }
 
-        plan.push(
+        plan.extend([
             CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        plan.push(
             ConfigureUpstreamInitService::plan(self.init.init, self.init.start_daemon)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
+        ]);
 
         Ok(plan)
     }
@@ -104,7 +90,7 @@ impl Planner for Linux {
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();

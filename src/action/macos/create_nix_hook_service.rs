@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use std::{path::PathBuf, process::Stdio};
 

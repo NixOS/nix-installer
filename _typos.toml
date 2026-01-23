@@ -1,0 +1,21 @@
+# typos configuration
+# See: https://github.com/crate-ci/typos
+
+[default.extend-words]
+# Ignore words that are valid in this codebase
+ba = "ba"                     # shell names: {a,ba,da,k,z}sh
+sur = "sur"                   # surname context
+crate = "crate"               # Rust crate
+ser = "ser"                   # serde serialization
+pullrequest = "pullrequest"
+pullrequests = "pullrequests"
+distroname = "distroname"
+hda = "hda"                   # QEMU High Definition Audio device (intel-hda, hda-duplex)
+
+[files]
+extend-exclude = [
+  "*.lock",
+  "target/",
+  "src/action/linux/selinux/",
+  "nix/tests/vm-test/vagrant_insecure_key",
+]

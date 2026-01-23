@@ -14,15 +14,15 @@ use std::{
     path::PathBuf,
     process::ExitCode,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use url::Url;
 
 use self::subcommand::NixInstallerSubcommand;
 
-pub use crate::plan::{cancel_signal, CancelSignal};
+pub use crate::plan::{CancelSignal, cancel_signal};
 
 pub trait CommandExecute {
     fn execute(self) -> eyre::Result<ExitCode>;

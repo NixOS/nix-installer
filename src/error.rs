@@ -78,7 +78,9 @@ pub enum NixInstallerError {
     #[error("Could not parse `{0}` as a version requirement in order to ensure it's compatible")]
     InvalidVersionRequirement(String, semver::Error),
     /// Could not parse `nix-installer`'s version as a valid version according to Semantic Versioning, therefore the plan version compatibility cannot be checked
-    #[error("Could not parse `nix-installer`'s version `{0}` as a valid version according to Semantic Versioning, therefore the plan version compatibility cannot be checked")]
+    #[error(
+        "Could not parse `nix-installer`'s version `{0}` as a valid version according to Semantic Versioning, therefore the plan version compatibility cannot be checked"
+    )]
     InvalidCurrentVersion(String, semver::Error),
     /// This version of `nix-installer` is not compatible with this plan's version
     #[error("`nix-installer` version `{}` is not compatible with this plan's version `{}`", .binary, .plan)]

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 
@@ -56,9 +56,9 @@ impl Action for RevertCleanSteamosNixOffload {
     fn revert_description(&self) -> Vec<ActionDescription> {
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec![
-                format!("On more recent versions of SteamOS, the `{OFFLOAD_PATH}` folder contains the Nix store, and needs to be cleaned on uninstall."),
-            ],
+            vec![format!(
+                "On more recent versions of SteamOS, the `{OFFLOAD_PATH}` folder contains the Nix store, and needs to be cleaned on uninstall."
+            )],
         )]
     }
 

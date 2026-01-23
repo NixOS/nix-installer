@@ -1,10 +1,10 @@
 use std::{path::PathBuf, process::ExitCode, time::SystemTime};
 
 use crate::{
+    InstallPlan,
     action::{Action, ActionState, StatefulAction},
     cli::{ensure_root, interaction::PromptChoice},
     plan::RECEIPT_LOCATION,
-    InstallPlan,
 };
 use clap::{ArgAction, Parser};
 use color_eyre::eyre::WrapErr;
@@ -61,7 +61,8 @@ impl CommandExecute for SplitReceipt {
         let backed_up_receipt_location = original_receipt_location
             .with_file_name(format!(".original-receipt.{timestamp_millis}.json"));
 
-        let brief_summary = format!("\n\
+        let brief_summary = format!(
+            "\n\
                This will split your existing receipt at {receipt} into two phases (phase 1: {phase1}, phase 2: {phase2}) \
                for uninstallation purposes, and move the existing receipt to a backup location at {backup_location} afterwards.\n\
                Phase 1 will clean up everything {except} for the root of the Nix store.\n\
@@ -70,11 +71,11 @@ impl CommandExecute for SplitReceipt {
                you do not need to run phase 2 of the uninstallation.\n\
                If you want a clean uninstallation, you should run phase 2 after phase 1.\
                ",
-           receipt = self.receipt.display().bold(),
-           phase1 = self.phase1_output.display().bold(),
-           phase2 = self.phase2_output.display().bold(),
-           backup_location = backed_up_receipt_location.display().bold(),
-           except = "except".italic(),
+            receipt = self.receipt.display().bold(),
+            phase1 = self.phase1_output.display().bold(),
+            phase2 = self.phase2_output.display().bold(),
+            backup_location = backed_up_receipt_location.display().bold(),
+            except = "except".italic(),
         );
 
         if !self.no_confirm {
@@ -193,7 +194,8 @@ fn two_phased_can_parse_receipt_perfectly(
                 let path = &action_unjson.action.path;
                 if path.starts_with("/nix") {
                     tracing::debug!(
-                        "Marking create_directory for {path} as skipped so we don't undo it until phase 2", path = path.display()
+                        "Marking create_directory for {path} as skipped so we don't undo it until phase 2",
+                        path = path.display()
                     );
 
                     {
@@ -212,7 +214,9 @@ fn two_phased_can_parse_receipt_perfectly(
                 let action_unjson =
                     roundtrip_to_extract_type::<crate::action::macos::CreateNixVolume>(action)?;
 
-                tracing::debug!("Marking create_volume, encrypt_volume (if it happened), unmount_volume as skipped so we don't undo it until phase 2");
+                tracing::debug!(
+                    "Marking create_volume, encrypt_volume (if it happened), unmount_volume as skipped so we don't undo it until phase 2"
+                );
 
                 {
                     let action_unjson = action_unjson.clone();
@@ -342,8 +346,8 @@ fn two_phased_cannot_parse_receipt_perfectly(
                     .context("create_directory path field should be string!")?;
                 if path.starts_with("/nix") {
                     tracing::debug!(
-                            "Marking create_directory for {path} as skipped so we don't undo it until phase 2"
-                        );
+                        "Marking create_directory for {path} as skipped so we don't undo it until phase 2"
+                    );
 
                     {
                         phase2_plan.actions.push(action_obj.clone());
@@ -362,7 +366,9 @@ fn two_phased_cannot_parse_receipt_perfectly(
                 s == "create_apfs_volume" && *receipt_version < semver::Version::new(0, 28, 0)
             ) =>
             {
-                tracing::debug!("Marking create_volume, encrypt_volume (if it happened), unmount_volume as skipped so we don't undo it until phase 2");
+                tracing::debug!(
+                    "Marking create_volume, encrypt_volume (if it happened), unmount_volume as skipped so we don't undo it until phase 2"
+                );
 
                 {
                     phase2_plan

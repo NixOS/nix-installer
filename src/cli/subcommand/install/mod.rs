@@ -5,23 +5,22 @@ use std::{
 };
 
 use crate::{
+    BuiltinPlanner, InstallPlan, NixInstallerError,
     cli::{
-        ensure_root,
+        CommandExecute, ensure_root,
         interaction::{self, PromptChoice},
         setup_signal_handler,
         subcommand::split_receipt::{PHASE1_RECEIPT_LOCATION, PHASE2_RECEIPT_LOCATION},
-        CommandExecute,
     },
     error::HasExpectedErrors,
     plan::RECEIPT_LOCATION,
     settings::CommonSettings,
     util::OnMissing,
-    BuiltinPlanner, InstallPlan, NixInstallerError,
 };
 use clap::{ArgAction, Parser};
 use color_eyre::{
-    eyre::{eyre, WrapErr},
     Section,
+    eyre::{WrapErr, eyre},
 };
 use owo_colors::OwoColorize;
 
@@ -89,7 +88,7 @@ impl CommandExecute for Install {
             true => {
                 tracing::trace!("Reading existing receipt");
                 let install_plan_string =
-                    std::fs::read_to_string(&RECEIPT_LOCATION).wrap_err("Reading plan")?;
+                    std::fs::read_to_string(RECEIPT_LOCATION).wrap_err("Reading plan")?;
                 Some(
                     serde_json::from_str(&install_plan_string).wrap_err_with(|| {
                         format!("Unable to parse existing receipt `{RECEIPT_LOCATION}`, it may be from an incompatible version of `nix-installer`. Try running `/nix/nix-installer uninstall`, then installing again.")
@@ -101,11 +100,15 @@ impl CommandExecute for Install {
 
         let uninstall_command = match Path::new("/nix/nix-installer").exists() {
             true => "/nix/nix-installer uninstall",
-            false => "curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- uninstall"
+            false => {
+                "curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- uninstall"
+            },
         };
 
         if plan.is_some() && maybe_planner.is_some() {
-            return Err(eyre!("`--plan` conflicts with passing a planner, a planner creates plans, so passing an existing plan doesn't make sense"));
+            return Err(eyre!(
+                "`--plan` conflicts with passing a planner, a planner creates plans, so passing an existing plan doesn't make sense"
+            ));
         }
 
         let mut install_plan = if let Some(plan_path) = plan {
@@ -281,14 +284,18 @@ impl CommandExecute for Install {
 
                 let phase1_receipt_path = Path::new(PHASE1_RECEIPT_LOCATION);
                 if phase1_receipt_path.exists() {
-                    tracing::debug!("Removing pre-existing uninstall phase 1 receipt at {PHASE1_RECEIPT_LOCATION} after successful install");
+                    tracing::debug!(
+                        "Removing pre-existing uninstall phase 1 receipt at {PHASE1_RECEIPT_LOCATION} after successful install"
+                    );
                     crate::util::remove_file(phase1_receipt_path, OnMissing::Ignore)
                         .wrap_err_with(|| format!("Failed to remove uninstall phase 1 receipt at {PHASE1_RECEIPT_LOCATION}"))?;
                 }
 
                 let phase2_receipt_path = Path::new(PHASE2_RECEIPT_LOCATION);
                 if phase2_receipt_path.exists() {
-                    tracing::debug!("Removing pre-existing uninstall phase 2 receipt at {PHASE2_RECEIPT_LOCATION} after successful install");
+                    tracing::debug!(
+                        "Removing pre-existing uninstall phase 2 receipt at {PHASE2_RECEIPT_LOCATION} after successful install"
+                    );
                     crate::util::remove_file(phase2_receipt_path, OnMissing::Ignore)
                         .wrap_err_with(|| format!("Failed to remove uninstall phase 2 receipt at {PHASE2_RECEIPT_LOCATION}"))?;
                 }

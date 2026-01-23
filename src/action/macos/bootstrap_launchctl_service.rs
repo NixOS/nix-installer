@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
 use crate::execute_command;
 
 use crate::action::{Action, ActionDescription};
 
-use super::{service_is_disabled, DARWIN_LAUNCHD_DOMAIN};
+use super::{DARWIN_LAUNCHD_DOMAIN, service_is_disabled};
 
 /**
 Bootstrap and kickstart an APFS volume

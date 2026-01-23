@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionTag, StatefulAction};
 
 use crate::action::common::configure_init_service::{SocketFile, UnitSrc};
-use crate::action::{common::ConfigureInitService, Action, ActionDescription};
+use crate::action::{Action, ActionDescription, common::ConfigureInitService};
 use crate::settings::InitSystem;
 
 // Linux

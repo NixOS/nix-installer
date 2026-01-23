@@ -3,7 +3,7 @@ use std::os::unix::process::ExitStatusExt;
 use nix::unistd::User;
 use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
@@ -361,7 +361,10 @@ pub fn delete_user_macos(name: &str) -> Result<(), ActionErrorKind> {
         Some(40) if stderr.contains("-14120") => {
             // The user is on an ephemeral Mac, like detsys uses
             // These Macs cannot always delete users, as sometimes there is no graphical login
-            tracing::warn!("Encountered an exit code 40 with -14120 error while removing user, this is likely because the initial executing user did not have a secure token, or that there was no graphical login session. To delete the user, log in graphically, then run `/usr/bin/dscl . -delete /Users/{}`", name);
+            tracing::warn!(
+                "Encountered an exit code 40 with -14120 error while removing user, this is likely because the initial executing user did not have a secure token, or that there was no graphical login session. To delete the user, log in graphically, then run `/usr/bin/dscl . -delete /Users/{}`",
+                name
+            );
         },
         Some(185) if stderr.contains("-14009 (eDSUnknownNodeName)") => {
             // The user has already been deleted

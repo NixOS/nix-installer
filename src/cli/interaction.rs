@@ -1,6 +1,6 @@
-use std::io::{stdin, stdout, BufRead, Write};
+use std::io::{BufRead, Write, stdin, stdout};
 
-use eyre::{eyre, WrapErr};
+use eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

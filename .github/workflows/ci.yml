@@ -88,23 +88,13 @@ jobs:
           name: nix-installer
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - name: Check rustfmt
-        run: nix develop --command check-rustfmt
-      - name: Check Clippy
-        run: nix develop --command check-clippy
-      - name: Check Spelling
-        run: nix develop --command check-spelling
-      - name: Check nixpkgs-fmt formatting
-        run: nix develop --command check-nixpkgs-fmt
-      - name: Check EditorConfig conformance
-        run: nix develop --command check-editorconfig
-      - name: Shell check for nix-installer.sh
-        run: nix develop --command shellcheck ./nix-installer.sh
+      - name: Run checks (formatting, clippy)
+        run: nix build .#checks.x86_64-linux.formatting .#checks.x86_64-linux.clippy -L
 
   run:
     name: Run (${{ matrix.system }}${{ matrix.no-init && ', no init' || '' }})
 
-    needs: [ build ]
+    needs: [build]
 
     strategy:
       fail-fast: false
@@ -218,7 +208,7 @@ jobs:
         if: ${{ matrix.no-init == '' }}
         run: |
           set -x
-          echo $PATH
+          echo "$PATH"
           nix-shell -p hello --command hello
           nix-env --install hello
           hello

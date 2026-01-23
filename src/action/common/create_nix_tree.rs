@@ -1,6 +1,6 @@
 use std::os::unix::fs::MetadataExt;
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::base::CreateDirectory;
 use crate::action::{

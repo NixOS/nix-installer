@@ -13,20 +13,20 @@ mod profile_queries;
 mod profiles;
 
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::RemoveDirectory,
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         macos::{
             ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, SetTmutilExclusions,
         },
-        StatefulAction,
     },
     execute_command,
     os::darwin::DiskUtilInfoOutput,
     planner::{Planner, PlannerError},
     settings::InstallSettingsError,
     settings::{CommonSettings, InitSystem},
-    Action, BuiltinPlanner,
 };
 
 /// A planner for MacOS (Darwin) systems
@@ -84,9 +84,9 @@ fn default_root_disk() -> Result<String, PlannerError> {
 
 #[typetag::serde(name = "macos")]
 impl Planner for Macos {
-    fn default() -> Result<Self, PlannerError> {
+    fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
-            settings: CommonSettings::default()?,
+            settings: CommonSettings::try_default()?,
             root_disk: Some(default_root_disk()?),
             case_sensitive: false,
             encrypt: None,
@@ -108,7 +108,9 @@ impl Planner for Macos {
                         .flatten()
                 {
                     if diskutil_info.file_vault {
-                        tracing::warn!("Existing volume was encrypted with FileVault, forcing `encrypt` to true");
+                        tracing::warn!(
+                            "Existing volume was encrypted with FileVault, forcing `encrypt` to true"
+                        );
                         true
                     } else {
                         choice
@@ -148,9 +150,7 @@ impl Planner for Macos {
             },
         };
 
-        let mut plan = vec![];
-
-        plan.push(
+        let mut plan = vec![
             CreateNixVolume::plan(
                 root_disk.unwrap(), /* We just ensured it was populated */
                 self.volume_label.clone(),
@@ -159,38 +159,27 @@ impl Planner for Macos {
             )
             .map_err(PlannerError::Action)?
             .boxed(),
-        );
-
-        plan.push(
             ProvisionNix::plan(&self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        // Auto-allocate uids is broken on Mac. Tools like `whoami` don't work.
-        // e.g. https://github.com/NixOS/nix/issues/8444
-        plan.push(
+            // Auto-allocate uids is broken on Mac. Tools like `whoami` don't work.
+            // e.g. https://github.com/NixOS/nix/issues/8444
             CreateUsersAndGroups::plan(self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        plan.push(
             SetTmutilExclusions::plan(vec![
                 PathBuf::from(NIX_STORE_LOCATION),
                 PathBuf::from("/nix/var"),
             ])
             .map_err(PlannerError::Action)?
             .boxed(),
-        );
-        plan.push(
             ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-        plan.push(
             ConfigureRemoteBuilding::plan()
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
+        ];
 
         if self.settings.modify_profile {
             plan.push(
@@ -200,17 +189,14 @@ impl Planner for Macos {
             );
         }
 
-        plan.push(
+        plan.extend([
             ConfigureUpstreamInitService::plan(InitSystem::Launchd, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
+        ]);
 
         Ok(plan)
     }
@@ -238,7 +224,7 @@ impl Planner for Macos {
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default()?.settings()?;
+        let default = Self::try_default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -363,7 +349,9 @@ fn check_suis() -> Result<(), PlannerError> {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum MacosError {
-    #[error("`nix-darwin` installation detected, it must be removed before uninstalling Nix. Please refer to https://github.com/LnL7/nix-darwin#uninstalling for instructions how to uninstall `nix-darwin`.")]
+    #[error(
+        "`nix-darwin` installation detected, it must be removed before uninstalling Nix. Please refer to https://github.com/LnL7/nix-darwin#uninstalling for instructions how to uninstall `nix-darwin`."
+    )]
     UninstallNixDarwin,
 
     #[error("{0}")]

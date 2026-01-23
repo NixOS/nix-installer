@@ -1,7 +1,7 @@
 use std::process::Output;
 
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
 
@@ -125,7 +125,7 @@ impl Action for KickstartLaunchctlService {
                         command: command_str,
                         output,
                     },
-                ))))
+                ))));
             },
         }
 

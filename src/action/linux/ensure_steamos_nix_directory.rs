@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use std::fs::create_dir;
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;

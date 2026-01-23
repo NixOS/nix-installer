@@ -1,4 +1,4 @@
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::base::create_or_merge_nix_config::{
     CreateOrMergeNixConfigError, EXPERIMENTAL_FEATURES_CONF_NAME,
@@ -156,7 +156,7 @@ impl PlaceNixConfiguration {
                     _ => {
                         return Err(Self::error(ActionErrorKind::Custom(Box::new(
                             PlaceNixConfigurationError::HttpUrlNotSupported(url.to_string()),
-                        ))))
+                        ))));
                     },
                 },
                 UrlOrPathOrString::Path(path) => std::fs::read_to_string(path)
@@ -317,9 +317,7 @@ impl Action for PlaceNixConfiguration {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum PlaceNixConfigurationError {
-    #[error(
-        "HTTP/HTTPS URLs are not supported for extra-conf; use a local file path instead: {0}"
-    )]
+    #[error("HTTP/HTTPS URLs are not supported for extra-conf; use a local file path instead: {0}")]
     HttpUrlNotSupported(String),
 }
 
@@ -379,9 +377,11 @@ mod tests {
             PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
         dbg!(&custom_nix_config);
         dbg!(custom_nix_config.settings());
-        dbg!(custom_nix_config
-            .settings()
-            .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME));
+        dbg!(
+            custom_nix_config
+                .settings()
+                .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
+        );
 
         assert!(
             custom_nix_config
@@ -506,7 +506,10 @@ mod tests {
             .expect("place nix config should succeed");
 
         let standard_conf = std::fs::read_to_string(nix_conf_path).unwrap();
-        assert!(standard_conf.contains("trusted-users"), "trusted-users setting should exist in standard conf so that we don't break cachix users");
+        assert!(
+            standard_conf.contains("trusted-users"),
+            "trusted-users setting should exist in standard conf so that we don't break cachix users"
+        );
 
         let custom_conf = std::fs::read_to_string(nix_custom_conf_path).unwrap();
         assert!(

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use nix::unistd::{access, AccessFlags};
+use nix::unistd::{AccessFlags, access};
 
 use crate::action::ActionErrorKind;
 
@@ -69,7 +69,7 @@ pub(crate) fn write_atomic(destination: &Path, body: &str) -> Result<(), ActionE
 
     std::fs::write(&temp, body).map_err(|e| ActionErrorKind::Write(temp.to_owned(), e))?;
 
-    std::fs::rename(&temp, &destination)
+    std::fs::rename(&temp, destination)
         .map_err(|e| ActionErrorKind::Rename(temp, destination.into(), e))?;
 
     Ok(())

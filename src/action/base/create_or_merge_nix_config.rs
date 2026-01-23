@@ -8,7 +8,7 @@ use std::{
 
 use nix_config_parser::NixConfig;
 use rand::Rng;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -685,8 +685,8 @@ mod test {
                         },
                         _ => {
                             return Err(eyre!(
-                        "Should have returned CreateOrMergeNixConfigError::UnmergeableConfig"
-                    ))
+                                "Should have returned CreateOrMergeNixConfigError::UnmergeableConfig"
+                            ));
                         },
                     }
                 }
@@ -694,7 +694,7 @@ mod test {
             _ => {
                 return Err(eyre!(
                     "Should have returned CreateOrMergeNixConfigError::UnmergeableConfig"
-                ))
+                ));
             },
         }
 
@@ -711,8 +711,7 @@ mod test {
         write(
             test_file.as_path(),
             "# test 2\n# test\nexperimental-features = flakes # some inline comment about experimental-features\n# the following line should be warn-dirty = true\nwarn-dirty = true # this is an inline comment\n# this is an ungrouped comment\n# this too",
-        )
-        ?;
+        )?;
         std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
         let mut nix_config = NixConfig::new();
         nix_config
