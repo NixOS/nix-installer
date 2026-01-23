@@ -1,26 +1,15 @@
 # Largely derived from https://github.com/NixOS/nix/blob/14f7dae3e4eb0c34192d0077383a7f2a2d630129/tests/installer/default.nix
 {
   forSystem,
-  binaryTarball,
   lib,
 }:
 
 let
   nix-installer-install = ''
-    NIX_PATH=$(readlink -f nix.tar.xz)
-    RUST_BACKTRACE="full" ./nix-installer install --nix-package-url "file://$NIX_PATH" --no-confirm --logger pretty --log-directive nix_installer=trace
+    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=trace
   '';
   nix-installer-install-quiet = ''
-    NIX_PATH=$(readlink -f nix.tar.xz)
-    RUST_BACKTRACE="full" ./nix-installer install --nix-package-url "file://$NIX_PATH" --no-confirm
-  '';
-  cure-script-multi-user = ''
-    tar xvf nix.tar.xz
-    ./nix-*/install --no-channel-add --yes --daemon
-  '';
-  cure-script-single-user = ''
-    tar xvf nix.tar.xz
-    ./nix-*/install --no-channel-add --yes --no-daemon
+    RUST_BACKTRACE="full" ./nix-installer install --no-confirm
   '';
   installCases = rec {
     install-default = {
@@ -138,8 +127,7 @@ let
     };
     install-no-start-daemon = {
       install = ''
-        NIX_PATH=$(readlink -f nix.tar.xz)
-        RUST_BACKTRACE="full" ./nix-installer install linux --nix-package-url "file://$NIX_PATH" --no-confirm --logger pretty --log-directive nix_installer=info --no-start-daemon
+        RUST_BACKTRACE="full" ./nix-installer install linux --no-confirm --logger pretty --log-directive nix_installer=info --no-start-daemon
       '';
       check = ''
         set -ex
@@ -165,8 +153,7 @@ let
     };
     install-daemonless = {
       install = ''
-        NIX_PATH=$(readlink -f nix.tar.xz)
-        RUST_BACKTRACE="full" ./nix-installer install linux --nix-package-url "file://$NIX_PATH" --no-confirm --logger pretty --log-directive nix_installer=info --init none
+        RUST_BACKTRACE="full" ./nix-installer install linux --no-confirm --logger pretty --log-directive nix_installer=info --init none
       '';
       check = ''
         set -ex
@@ -220,8 +207,7 @@ let
     };
     cure-self-linux-broken-no-nix-path = {
       preinstall = ''
-        NIX_PATH=$(readlink -f nix.tar.xz)
-        RUST_BACKTRACE="full" ./nix-installer install --nix-package-url "file://$NIX_PATH" --no-confirm
+        RUST_BACKTRACE="full" ./nix-installer install --no-confirm
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo rm -rf /nix/
       '';
@@ -245,8 +231,7 @@ let
     };
     cure-self-linux-broken-missing-users-and-group = {
       preinstall = ''
-        NIX_PATH=$(readlink -f nix.tar.xz)
-        RUST_BACKTRACE="full" ./nix-installer install --nix-package-url "file://$NIX_PATH" --no-confirm
+        RUST_BACKTRACE="full" ./nix-installer install --no-confirm
         sudo mv /nix/receipt.json /nix/old-receipt.json
         for i in {1..32}; do
           sudo userdel "nixbld''${i}"
@@ -303,82 +288,6 @@ let
       uninstallCheck = installCases.install-default.uninstallCheck;
     };
   };
-  cureScriptCases = {
-    cure-script-multi-self-broken-no-nix-path = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo rm -rf /nix/
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-broken-missing-users = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo userdel nixbld1
-        sudo userdel nixbld3
-        sudo userdel nixbld16
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-broken-daemon-disabled = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo systemctl disable --now nix-daemon.socket
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-broken-daemon-stopped = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo systemctl stop nix-daemon.socket
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-broken-no-etc-nix = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo rm -rf /etc/nix
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-broken-unmodified-bashrc = {
-      preinstall = ''
-        ${cure-script-multi-user}
-        sudo sed -i '/# Nix/,/# End Nix/d' /etc/bash.bashrc
-      '';
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    cure-script-multi-working = {
-      preinstall = cure-script-multi-user;
-      install = installCases.install-default.install;
-      check = installCases.install-default.check;
-      uninstall = installCases.install-default.uninstall;
-      uninstallCheck = installCases.install-default.uninstallCheck;
-    };
-    # cure-script-single-working = {
-    #   preinstall = cure-script-single-user;
-    #   install = installCases.install-default.install;
-    #   check = installCases.install-default.check;
-    # };
-  };
   # Cases to test uninstalling is complete even in the face of errors.
   uninstallCases =
     let
@@ -420,19 +329,6 @@ let
   images = {
 
     # End of standard support https://wiki.ubuntu.com/Releases
-    # No systemd
-    /*
-      "ubuntu-v14_04" = {
-      image = import <nix/fetchurl.nix> {
-      url = "https://app.vagrantup.com/ubuntu/boxes/trusty64/versions/20190514.0.0/providers/virtualbox.box";
-      hash = "sha256-iUUXyRY8iW7DGirb0zwGgf1fRbLA7wimTJKgP7l/OQ8=";
-      };
-      rootDisk = "box-disk1.vmdk";
-      system = "x86_64-linux";
-      };
-    */
-
-    # End of standard support https://wiki.ubuntu.com/Releases
     "ubuntu-v16_04" = {
       image = import <nix/fetchurl.nix> {
         url = "https://app.vagrantup.com/generic/boxes/ubuntu1604/versions/4.1.12/providers/libvirt.box";
@@ -458,7 +354,6 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
-      upstreamScriptsWork = false; # SELinux!
     };
 
     "fedora-v37" = {
@@ -468,22 +363,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
-      upstreamScriptsWork = false; # SELinux!
     };
-
-    # Currently fails with 'error while loading shared libraries:
-    # libsodium.so.23: cannot stat shared object: Invalid argument'.
-    /*
-      "rhel-v6" = {
-      image = import <nix/fetchurl.nix> {
-      url = "https://app.vagrantup.com/generic/boxes/rhel6/versions/4.1.12/providers/libvirt.box";
-      hash = "sha256-QwzbvRoRRGqUCQptM7X/InRWFSP2sqwRt2HaaO6zBGM=";
-      };
-      rootDisk = "box.img";
-      upstreamScriptsWork = false; # SELinux!
-      system = "x86_64-linux";
-      };
-    */
 
     "rhel-v7" = {
       image = import <nix/fetchurl.nix> {
@@ -491,7 +371,6 @@ let
         hash = "sha256-b4afnqKCO9oWXgYHb9DeQ2berSwOjS27rSd9TxXDc/U=";
       };
       rootDisk = "box.img";
-      upstreamScriptsWork = false; # SELinux!
       system = "x86_64-linux";
     };
 
@@ -502,7 +381,6 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
-      upstreamScriptsWork = false; # SELinux!
     };
 
     "rhel-v9" = {
@@ -512,7 +390,6 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
-      upstreamScriptsWork = false; # SELinux!
       extraQemuOpts = "-cpu Westmere-v2";
     };
 
@@ -539,7 +416,6 @@ let
         preuninstallScript = test.preuninstall or "echo \"Not Applicable\"";
         uninstallCheckScript = test.uninstallCheck;
         installer = nix-installer-static;
-        binaryTarball = binaryTarball.${system};
       }
       ''
         shopt -s nullglob
@@ -598,9 +474,6 @@ let
         echo "Copying installer..."
         scp -P 20022 $ssh_opts $installer/bin/nix-installer vagrant@localhost:nix-installer
 
-        echo "Copying nix tarball..."
-        scp -P 20022 $ssh_opts $binaryTarball/nix-*.tar.xz vagrant@localhost:nix.tar.xz
-
         echo "Running preinstall..."
         $ssh "set -eux; $preinstallScript"
 
@@ -645,13 +518,11 @@ let
       }
     ) images;
 
-  allCases = lib.recursiveUpdate (lib.recursiveUpdate installCases (lib.recursiveUpdate cureSelfCases cureScriptCases)) uninstallCases;
+  allCases = lib.recursiveUpdate installCases (lib.recursiveUpdate cureSelfCases uninstallCases);
 
   install-tests = makeTests "install" installCases;
 
   cure-self-tests = makeTests "cure-self" cureSelfCases;
-
-  cure-script-tests = makeTests "cure-script" cureScriptCases;
 
   uninstall-tests = makeTests "uninstall" uninstallCases;
 
@@ -664,15 +535,12 @@ let
           install-tests."${imageName}"."x86_64-linux".install
           cure-self-tests."${imageName}"."x86_64-linux".cure-self
           uninstall-tests."${imageName}"."x86_64-linux".uninstall
-        ]
-        ++ (lib.optional (image.upstreamScriptsWork or false)
-          cure-script-tests."${imageName}"."x86_64-linux".cure-script
-        );
+        ];
       }
     );
   }) images;
 
-  joined-tests = lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate install-tests (lib.recursiveUpdate cure-self-tests cure-script-tests)) uninstall-tests) all-tests;
+  joined-tests = lib.recursiveUpdate (lib.recursiveUpdate install-tests (lib.recursiveUpdate cure-self-tests uninstall-tests)) all-tests;
 
 in
 lib.recursiveUpdate joined-tests {
@@ -693,7 +561,6 @@ lib.recursiveUpdate joined-tests {
         allCases
         // {
           "cure-self" = { };
-          "cure-script" = { };
           "install" = { };
           "uninstall" = { };
           "all" = { };
