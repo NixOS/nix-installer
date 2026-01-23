@@ -217,15 +217,10 @@
             buildInputs =
               with pkgs;
               [
-                # Rust development
                 rustc
                 cargo
                 clippy
                 rust-analyzer
-                cargo-outdated
-                cargo-semver-checks
-                # cargo-audit # NOTE(cole-h): build currently broken because of time dependency and Rust 1.80
-                cargo-watch
                 cacert
 
                 # treefmt (for `nix fmt` and manual formatting)
