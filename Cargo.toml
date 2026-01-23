@@ -13,32 +13,78 @@ cli = ["eyre", "color-eyre", "clap", "tracing-subscriber", "tracing-error"]
 
 [[bin]]
 name = "nix-installer"
-required-features = [ "cli" ]
+required-features = ["cli"]
 
 [dependencies]
-clap = { version = "4", features = ["std", "color", "usage", "help", "error-context", "suggestions", "derive", "env"], optional = true }
-color-eyre = { version = "0.6.2", default-features = false, features = [ "track-caller", "issue-url", "tracing-error", "capture-spantrace", "color-spantrace" ], optional = true }
+clap = { version = "4", features = [
+  "std",
+  "color",
+  "usage",
+  "help",
+  "error-context",
+  "suggestions",
+  "derive",
+  "env",
+], optional = true }
+color-eyre = { version = "0.6.2", default-features = false, features = [
+  "track-caller",
+  "issue-url",
+  "tracing-error",
+  "capture-spantrace",
+  "color-spantrace",
+], optional = true }
 ctrlc = { version = "3.4", features = ["termination"] }
-eyre = { version = "0.6.8", default-features = false, features = [ "track-caller" ], optional = true }
+eyre = { version = "0.6.8", default-features = false, features = [
+  "track-caller",
+], optional = true }
 glob = { version = "0.3.0", default-features = false }
-nix = { version = "0.31.0", default-features = false, features = ["user", "fs", "process"] }
+nix = { version = "0.31.0", default-features = false, features = [
+  "user",
+  "fs",
+  "process",
+] }
 owo-colors = { version = "4.0.0", default-features = false }
-serde = { version = "1.0.203", default-features = false, features = [ "std", "derive" ] }
-serde_json = { version = "1.0.149", default-features = false, features = [ "std" ] }
-tar = { version = "0.4.38", default-features = false, features = [ "xattr" ] }
-target-lexicon = { version = "0.13.4", default-features = false, features = [ "std" ] }
+serde = { version = "1.0.203", default-features = false, features = [
+  "std",
+  "derive",
+] }
+serde_json = { version = "1.0.149", default-features = false, features = [
+  "std",
+] }
+tar = { version = "0.4.38", default-features = false, features = ["xattr"] }
+target-lexicon = { version = "0.13.4", default-features = false, features = [
+  "std",
+] }
 thiserror = { version = "2.0.18", default-features = false }
-tracing = { version = "0.1.36", default-features = false, features = [ "std", "attributes" ] }
-tracing-error = { version = "0.2.0", default-features = false, optional = true, features = ["traced-error"] }
-tracing-subscriber = { version = "0.3.22", default-features = false, features = [ "std", "registry", "fmt", "json", "ansi", "env-filter" ], optional = true }
+tracing = { version = "0.1.36", default-features = false, features = [
+  "std",
+  "attributes",
+] }
+tracing-error = { version = "0.2.0", default-features = false, optional = true, features = [
+  "traced-error",
+] }
+tracing-subscriber = { version = "0.3.22", default-features = false, features = [
+  "std",
+  "registry",
+  "fmt",
+  "json",
+  "ansi",
+  "env-filter",
+], optional = true }
 url = { version = "2.5.8", default-features = false, features = ["serde"] }
 zstd = { version = "0.13", default-features = false }
-plist = { version = "=1.8.0", default-features = false, features = [ "serde" ]}
+plist = { version = "=1.8.0", default-features = false, features = ["serde"] }
 dirs = { version = "6.0.0", default-features = false }
 typetag = { version = "0.2.17", default-features = false }
 dyn-clone = { version = "1.0.9", default-features = false }
-rand = { version = "0.9.2", default-features = false, features = [ "std", "thread_rng" ] }
-semver = { version = "1.0.23", default-features = false, features = ["serde", "std"] }
+rand = { version = "0.9.2", default-features = false, features = [
+  "std",
+  "thread_rng",
+] }
+semver = { version = "1.0.23", default-features = false, features = [
+  "serde",
+  "std",
+] }
 nix-config-parser = { version = "0.2", features = ["serde"] }
 
 sysctl = "0.7.1"
@@ -46,11 +92,13 @@ walkdir = "2.3.3"
 tempfile = "3.24.0"
 
 [dev-dependencies]
-eyre = { version = "0.6.8", default-features = false, features = [ "track-caller" ] }
+eyre = { version = "0.6.8", default-features = false, features = [
+  "track-caller",
+] }
 
 [profile.release]
-strip = true  # Automatically strip symbols from the binary.
-opt-level = "z"  # Optimize for size.
+strip = true    # Automatically strip symbols from the binary.
+opt-level = "z" # Optimize for size.
 
 # Disabled for now while we are in experimental phase
 # This gives maybe 10% smaller binaries but increases compile time significantly.

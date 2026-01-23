@@ -4,9 +4,10 @@
   # Used to find the project root
   projectRootFile = "flake.nix";
 
-  # Rust formatting
+  # Rust formatting (edition 2021)
   programs.rustfmt = {
     enable = true;
+    edition = "2021";
   };
 
   # Nix formatting (nixfmt-rfc-style is the new standard)
@@ -18,18 +19,15 @@
   # Shell script formatting and linting
   programs.shfmt.enable = true;
   programs.shellcheck.enable = true;
+  settings.formatter.shellcheck.excludes = [
+    ".envrc" # direnv file, not a regular shell script
+  ];
+  settings.formatter.shfmt.excludes = [
+    ".envrc"
+  ];
 
-  # Spell checking
-  programs.typos = {
-    enable = true;
-  };
-  settings.formatter.typos = {
-    excludes = [
-      "*.lock"
-      "target/*"
-      "src/action/linux/selinux/*"
-    ];
-  };
+  # Spell checking (config in _typos.toml)
+  programs.typos.enable = true;
 
   # TOML formatting
   programs.taplo.enable = true;
