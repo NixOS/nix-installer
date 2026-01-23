@@ -30,6 +30,16 @@ If using an editor, it may be preferable to adopt an addon to enter the environm
 - [`vim`](https://github.com/direnv/direnv.vim)
 - [VSCode](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv)
 
+## Code Formatting and Linting
+
+This project uses [treefmt](https://github.com/numtide/treefmt) for formatting.
+
+```bash
+nix fmt                                        # format all files
+nix build .#checks.x86_64-linux.formatting     # check formatting
+nix build .#checks.x86_64-linux.clippy         # run clippy
+```
+
 ## Testing Installs
 
 If you're hacking on `nix-installer`, you likely already have Nix and cannot test locally.
