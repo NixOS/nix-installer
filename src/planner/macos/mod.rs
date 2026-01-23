@@ -1,9 +1,9 @@
 use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
+use crate::util::which;
 #[cfg(feature = "cli")]
 use clap::ArgAction;
 use std::process::Command;
-use which::which;
 
 use super::ShellProfileLocations;
 use crate::action::common::provision_nix::NIX_STORE_LOCATION;
@@ -283,8 +283,8 @@ impl From<Macos> for BuiltinPlanner {
 }
 
 fn check_nix_darwin_not_installed() -> Result<(), PlannerError> {
-    let has_darwin_rebuild = which("darwin-rebuild").is_ok();
-    let has_darwin_option = which("darwin-option").is_ok();
+    let has_darwin_rebuild = which("darwin-rebuild").is_some();
+    let has_darwin_option = which("darwin-option").is_some();
 
     let activate_system_present = Command::new("launchctl")
         .arg("print")

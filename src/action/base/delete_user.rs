@@ -6,6 +6,7 @@ use tracing::{span, Span};
 use crate::action::base::create_user::delete_user_macos;
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -26,7 +27,7 @@ impl DeleteUser {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => (),
             _ => {
-                if !(which::which("userdel").is_ok() || which::which("deluser").is_ok()) {
+                if !(which("userdel").is_some() || which("deluser").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingUserDeletionCommand));
                 }
             },
@@ -78,14 +79,14 @@ impl Action for DeleteUser {
                 delete_user_macos(&self.name).map_err(Self::error)?;
             },
             _ => {
-                if which::which("userdel").is_ok() {
+                if which("userdel").is_some() {
                     execute_command(
                         Command::new("userdel")
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("deluser").is_ok() {
+                } else if which("deluser").is_some() {
                     execute_command(
                         Command::new("deluser")
                             .arg(&self.name)

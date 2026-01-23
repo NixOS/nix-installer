@@ -347,7 +347,7 @@ impl From<ActionError> for ActionErrorKind {
 
 /// An error occurring during an action
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+#[derive(thiserror::Error, Debug)]
 pub enum ActionErrorKind {
     /// A custom error
     #[error(transparent)]

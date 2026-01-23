@@ -7,6 +7,7 @@ use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -40,10 +41,10 @@ impl AddUserToGroup {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => (),
             _ => {
-                if !(which::which("addgroup").is_ok() || which::which("gpasswd").is_ok()) {
+                if !(which("addgroup").is_some() || which("gpasswd").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingAddUserToGroupCommand));
                 }
-                if !(which::which("delgroup").is_ok() || which::which("gpasswd").is_ok()) {
+                if !(which("delgroup").is_some() || which("gpasswd").is_some()) {
                     return Err(Self::error(
                         ActionErrorKind::MissingRemoveUserFromGroupCommand,
                     ));
@@ -213,7 +214,7 @@ impl Action for AddUserToGroup {
                 .map_err(Self::error)?;
             },
             _ => {
-                if which::which("gpasswd").is_ok() {
+                if which("gpasswd").is_some() {
                     execute_command(
                         Command::new("gpasswd")
                             .args(["-a"])
@@ -221,7 +222,7 @@ impl Action for AddUserToGroup {
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("addgroup").is_ok() {
+                } else if which("addgroup").is_some() {
                     execute_command(
                         Command::new("addgroup")
                             .args([&self.name, &self.groupname])
@@ -272,7 +273,7 @@ impl Action for AddUserToGroup {
                 .map_err(Self::error)?;
             },
             _ => {
-                if which::which("gpasswd").is_ok() {
+                if which("gpasswd").is_some() {
                     execute_command(
                         Command::new("gpasswd")
                             .args(["-d"])
@@ -280,7 +281,7 @@ impl Action for AddUserToGroup {
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("delgroup").is_ok() {
+                } else if which("delgroup").is_some() {
                     execute_command(
                         Command::new("delgroup")
                             .args([name, groupname])

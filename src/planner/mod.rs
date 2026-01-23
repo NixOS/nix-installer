@@ -372,7 +372,7 @@ impl Default for FishShellProfileLocations {
 
 /// An error originating from a [`Planner`]
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+#[derive(thiserror::Error, Debug)]
 pub enum PlannerError {
     #[error("The selected planner (`{planner}`) does not support the host's operating system (`{host_os}`)")]
     IncompatibleOperatingSystem {

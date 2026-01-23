@@ -9,7 +9,7 @@ use crate::{
 
 /// An error occurring during a call defined in this crate
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+#[derive(thiserror::Error, Debug)]
 pub enum NixInstallerError {
     /// An error originating from an [`Action`](crate::action::Action)
     #[error("Error executing action")]

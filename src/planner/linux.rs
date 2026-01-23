@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
+use crate::util::which;
 use std::process::Command;
-use which::which;
 
 use super::ShellProfileLocations;
 use crate::{
@@ -177,10 +177,10 @@ pub(crate) fn check_not_wsl1() -> Result<(), PlannerError> {
 }
 
 pub(crate) fn detect_selinux() -> Result<bool, PlannerError> {
-    if Path::new("/sys/fs/selinux").exists() && which("sestatus").is_ok() {
+    if Path::new("/sys/fs/selinux").exists() && which("sestatus").is_some() {
         // We expect systems with SELinux to have the normal SELinux tools.
-        let has_semodule = which("semodule").is_ok();
-        let has_restorecon = which("restorecon").is_ok();
+        let has_semodule = which("semodule").is_some();
+        let has_restorecon = which("restorecon").is_some();
         if !(has_semodule && has_restorecon) {
             Err(PlannerError::SelinuxRequirements)
         } else {

@@ -5,6 +5,7 @@ use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -29,10 +30,10 @@ impl CreateGroup {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => (),
             _ => {
-                if !(which::which("groupadd").is_ok() || which::which("addgroup").is_ok()) {
+                if !(which("groupadd").is_some() || which("addgroup").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingGroupCreationCommand));
                 }
-                if !(which::which("groupdel").is_ok() || which::which("delgroup").is_ok()) {
+                if !(which("groupdel").is_some() || which("delgroup").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingGroupDeletionCommand));
                 }
             },
@@ -108,14 +109,14 @@ impl Action for CreateGroup {
                 .map_err(Self::error)?;
             },
             _ => {
-                if which::which("groupadd").is_ok() {
+                if which("groupadd").is_some() {
                     execute_command(
                         Command::new("groupadd")
                             .args(["-g", &gid.to_string(), "--system", name])
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("addgroup").is_ok() {
+                } else if which("addgroup").is_some() {
                     execute_command(
                         Command::new("addgroup")
                             .args(["-g", &gid.to_string(), "--system", name])
@@ -156,14 +157,14 @@ impl Action for CreateGroup {
                 .map_err(Self::error)?;
             },
             _ => {
-                if which::which("groupdel").is_ok() {
+                if which("groupdel").is_some() {
                     execute_command(
                         Command::new("groupdel")
                             .arg(name)
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("delgroup").is_ok() {
+                } else if which("delgroup").is_some() {
                     execute_command(
                         Command::new("delgroup")
                             .arg(name)

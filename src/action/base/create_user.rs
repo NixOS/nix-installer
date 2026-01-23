@@ -7,6 +7,7 @@ use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -47,10 +48,10 @@ impl CreateUser {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => (),
             _ => {
-                if !(which::which("useradd").is_ok() || which::which("adduser").is_ok()) {
+                if !(which("useradd").is_some() || which("adduser").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingUserCreationCommand));
                 }
-                if !(which::which("userdel").is_ok() || which::which("deluser").is_ok()) {
+                if !(which("userdel").is_some() || which("deluser").is_some()) {
                     return Err(Self::error(ActionErrorKind::MissingUserDeletionCommand));
                 }
             },
@@ -134,7 +135,7 @@ impl Action for CreateUser {
                 create_user_macos(name, *uid, *gid).map_err(Self::error)?;
             },
             _ => {
-                if which::which("useradd").is_ok() {
+                if which("useradd").is_some() {
                     execute_command(
                         Command::new("useradd")
                             .args([
@@ -159,7 +160,7 @@ impl Action for CreateUser {
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("adduser").is_ok() {
+                } else if which("adduser").is_some() {
                     execute_command(
                         Command::new("adduser")
                             .args([
@@ -209,14 +210,14 @@ impl Action for CreateUser {
                 delete_user_macos(&self.name).map_err(Self::error)?;
             },
             _ => {
-                if which::which("userdel").is_ok() {
+                if which("userdel").is_some() {
                     execute_command(
                         Command::new("userdel")
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
                     .map_err(Self::error)?;
-                } else if which::which("deluser").is_ok() {
+                } else if which("deluser").is_some() {
                     execute_command(
                         Command::new("deluser")
                             .arg(&self.name)

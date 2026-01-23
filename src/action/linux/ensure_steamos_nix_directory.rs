@@ -6,6 +6,7 @@ use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -22,7 +23,7 @@ pub struct EnsureSteamosNixDirectory;
 impl EnsureSteamosNixDirectory {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
-        if which::which("steamos-readonly").is_err() {
+        if which("steamos-readonly").is_none() {
             return Err(Self::error(ActionErrorKind::MissingSteamosBinary(
                 "steamos-readonly".into(),
             )));
