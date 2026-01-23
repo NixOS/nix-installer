@@ -4,7 +4,7 @@ use std::process::Command;
 use which::which;
 
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, strum::IntoStaticStr)]
+#[derive(thiserror::Error, Debug)]
 pub enum SelfTestError {
     #[error("Shell `{shell}` failed self-test with command `{command}`, stderr:\n{}", String::from_utf8_lossy(&output.stderr))]
     ShellFailed {
