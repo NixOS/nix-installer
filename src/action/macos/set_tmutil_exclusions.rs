@@ -32,7 +32,7 @@ pub struct SetTmutilExclusions {
 
 impl SetTmutilExclusions {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(paths: Vec<PathBuf>) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(paths: Vec<PathBuf>) -> Result<StatefulAction<Self>, ActionError> {
         /* Testing with `sudo tmutil addexclusion -p /nix` and  `sudo tmutil addexclusion -v "Nix Store"` on DetSys's Macs
            yielded this error:
 
@@ -47,7 +47,7 @@ impl SetTmutilExclusions {
         */
         let mut set_tmutil_exclusions = Vec::new();
         for path in paths {
-            let set_tmutil_exclusion = SetTmutilExclusion::plan(path).await.map_err(Self::error)?;
+            let set_tmutil_exclusion = SetTmutilExclusion::plan(path).map_err(Self::error)?;
             set_tmutil_exclusions.push(set_tmutil_exclusion);
         }
 
@@ -58,7 +58,6 @@ impl SetTmutilExclusions {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "set_tmutil_exclusions")]
 impl Action for SetTmutilExclusions {
     fn action_tag() -> ActionTag {
@@ -90,13 +89,10 @@ impl Action for SetTmutilExclusions {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         // Just do sequential since parallelizing this will have little benefit
         for set_tmutil_exclusion in self.set_tmutil_exclusions.iter_mut() {
-            set_tmutil_exclusion
-                .try_execute()
-                .await
-                .map_err(Self::error)?;
+            set_tmutil_exclusion.try_execute().map_err(Self::error)?;
         }
 
         Ok(())
@@ -110,11 +106,11 @@ impl Action for SetTmutilExclusions {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
         // Just do sequential since parallelizing this will have little benefit
         for set_tmutil_exclusion in self.set_tmutil_exclusions.iter_mut().rev() {
-            if let Err(err) = set_tmutil_exclusion.try_revert().await {
+            if let Err(err) = set_tmutil_exclusion.try_revert() {
                 errors.push(err);
             }
         }

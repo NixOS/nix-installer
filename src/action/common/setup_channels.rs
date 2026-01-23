@@ -3,16 +3,15 @@ use std::path::PathBuf;
 use crate::{
     action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
     execute_command,
+    settings::{NIX_STORE_PATH, NSS_CACERT_STORE_PATH},
 };
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{Action, ActionDescription};
 
 use crate::action::base::CreateFile;
-
-use super::ConfigureNix;
 
 /**
 Setup the default system channel with nixpkgs-unstable.
@@ -20,7 +19,6 @@ Setup the default system channel with nixpkgs-unstable.
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct SetupChannels {
     create_file: StatefulAction<CreateFile>,
-    unpacked_path: PathBuf,
 }
 
 impl SetupChannels {
@@ -41,7 +39,7 @@ impl SetupChannels {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(unpacked_path: PathBuf) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         let create_file = CreateFile::plan(
             Self::get_root_home()
                 .map_err(Self::error)?
@@ -51,17 +49,11 @@ impl SetupChannels {
             0o664,
             "https://nixos.org/channels/nixpkgs-unstable nixpkgs\n".to_string(),
             false,
-        )
-        .await?;
-        Ok(Self {
-            create_file,
-            unpacked_path,
-        }
-        .into())
+        )?;
+        Ok(Self { create_file }.into())
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "setup_channels")]
 impl Action for SetupChannels {
     fn action_tag() -> ActionTag {
@@ -72,11 +64,7 @@ impl Action for SetupChannels {
     }
 
     fn tracing_span(&self) -> Span {
-        span!(
-            tracing::Level::DEBUG,
-            "setup_channels",
-            unpacked_path = %self.unpacked_path.display(),
-        )
+        span!(tracing::Level::DEBUG, "setup_channels",)
     }
 
     fn execute_description(&self) -> Vec<ActionDescription> {
@@ -92,16 +80,16 @@ impl Action for SetupChannels {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         // Place channel configuration
-        self.create_file.try_execute().await?;
+        self.create_file.try_execute()?;
 
-        let (nix_pkg, nss_ca_cert_pkg) =
-            ConfigureNix::find_nix_and_ca_cert(&self.unpacked_path).await?;
+        let nix_pkg = PathBuf::from(NIX_STORE_PATH.trim());
+        let nss_ca_cert_pkg = PathBuf::from(NSS_CACERT_STORE_PATH.trim());
+
         // Update nixpkgs channel
         execute_command(
             Command::new(nix_pkg.join("bin/nix-channel"))
-                .process_group(0)
                 .arg("--update")
                 .arg("nixpkgs")
                 .stdin(std::process::Stdio::null())
@@ -112,7 +100,6 @@ impl Action for SetupChannels {
                 ), /* We could rely on setup_default_profile setting this
                    environment variable, but add this just to be explicit. */
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())
@@ -126,8 +113,8 @@ impl Action for SetupChannels {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
-        self.create_file.try_revert().await?;
+    fn revert(&mut self) -> Result<(), ActionError> {
+        self.create_file.try_revert()?;
 
         // We could try to rollback
         // /nix/var/nix/profiles/per-user/root/channels, but that will happen

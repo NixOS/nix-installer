@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
@@ -23,7 +23,7 @@ pub struct ProvisionSelinux {
 
 impl ProvisionSelinux {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         policy_path: PathBuf,
         policy_content: &[u8],
     ) -> Result<StatefulAction<Self>, ActionError> {
@@ -38,7 +38,6 @@ impl ProvisionSelinux {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "provision_selinux")]
 impl Action for ProvisionSelinux {
     fn action_tag() -> ActionTag {
@@ -66,23 +65,19 @@ impl Action for ProvisionSelinux {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         if self.policy_path.exists() {
             // Rebuild it.
-            remove_existing_policy(&self.policy_path)
-                .await
-                .map_err(Self::error)?;
+            remove_existing_policy(&self.policy_path).map_err(Self::error)?;
         }
 
         if let Some(parent) = self.policy_path.parent() {
-            tokio::fs::create_dir_all(&parent)
-                .await
+            std::fs::create_dir_all(&parent)
                 .map_err(|e| ActionErrorKind::CreateDirectory(parent.into(), e))
                 .map_err(Self::error)?;
         }
 
-        tokio::fs::write(&self.policy_path, &self.policy_content)
-            .await
+        std::fs::write(&self.policy_path, &self.policy_content)
             .map_err(|e| ActionErrorKind::Write(self.policy_path.clone(), e))
             .map_err(Self::error)?;
 
@@ -91,12 +86,9 @@ impl Action for ProvisionSelinux {
                 .arg("--install")
                 .arg(&self.policy_path),
         )
-        .await
         .map_err(Self::error)?;
 
-        execute_command(Command::new("restorecon").args(["-FR", "/nix"]))
-            .await
-            .map_err(Self::error)?;
+        execute_command(Command::new("restorecon").args(["-FR", "/nix"])).map_err(Self::error)?;
 
         Ok(())
     }
@@ -109,25 +101,22 @@ impl Action for ProvisionSelinux {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         if self.policy_path.exists() {
-            remove_existing_policy(&self.policy_path)
-                .await
-                .map_err(Self::error)?;
+            remove_existing_policy(&self.policy_path).map_err(Self::error)?;
         }
 
         Ok(())
     }
 }
 
-async fn remove_existing_policy(policy_path: &Path) -> Result<(), ActionErrorKind> {
-    execute_command(Command::new("semodule").arg("--remove").arg("nix")).await?;
+fn remove_existing_policy(policy_path: &Path) -> Result<(), ActionErrorKind> {
+    execute_command(Command::new("semodule").arg("--remove").arg("nix"))?;
 
     crate::util::remove_file(policy_path, OnMissing::Ignore)
-        .await
         .map_err(|e| ActionErrorKind::Remove(policy_path.into(), e))?;
 
-    execute_command(Command::new("restorecon").args(["-FR", "/nix"])).await?;
+    execute_command(Command::new("restorecon").args(["-FR", "/nix"]))?;
 
     Ok(())
 }

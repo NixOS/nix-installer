@@ -48,10 +48,9 @@ pub struct SplitReceipt {
     pub force_naive_json_method: bool,
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for SplitReceipt {
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         ensure_root()?;
 
         let timestamp_millis = SystemTime::now()
@@ -80,16 +79,11 @@ impl CommandExecute for SplitReceipt {
 
         if !self.no_confirm {
             loop {
-                match crate::cli::interaction::prompt(&brief_summary, PromptChoice::Yes, true)
-                    .await?
-                {
+                match crate::cli::interaction::prompt(&brief_summary, PromptChoice::Yes, true)? {
                     PromptChoice::Yes => break,
-                    PromptChoice::No => {
-                        crate::cli::interaction::clean_exit_with_message(
-                            "Okay, didn't do anything! Bye!",
-                        )
-                        .await
-                    },
+                    PromptChoice::No => crate::cli::interaction::clean_exit_with_message(
+                        "Okay, didn't do anything! Bye!",
+                    ),
                     PromptChoice::Explain => (),
                 }
             }
@@ -97,12 +91,11 @@ impl CommandExecute for SplitReceipt {
             tracing::info!("{}", brief_summary);
         }
 
-        let install_receipt_string = tokio::fs::read_to_string(&self.receipt)
-            .await
-            .wrap_err("Reading receipt")?;
+        let install_receipt_string =
+            std::fs::read_to_string(&self.receipt).wrap_err("Reading receipt")?;
 
         if self.force_naive_json_method {
-            two_phased_cannot_parse_receipt_perfectly(&self, &install_receipt_string).await?;
+            two_phased_cannot_parse_receipt_perfectly(&self, &install_receipt_string)?;
         } else {
             let maybe_compatible_plan =
                 serde_json::from_str::<InstallPlan>(&install_receipt_string)
@@ -116,16 +109,15 @@ impl CommandExecute for SplitReceipt {
                     });
             match maybe_compatible_plan {
                 Some(plan) => {
-                    two_phased_can_parse_receipt_perfectly(&self, plan).await?;
+                    two_phased_can_parse_receipt_perfectly(&self, plan)?;
                 },
                 None => {
-                    two_phased_cannot_parse_receipt_perfectly(&self, &install_receipt_string)
-                        .await?;
+                    two_phased_cannot_parse_receipt_perfectly(&self, &install_receipt_string)?;
                 },
             }
         }
 
-        tokio::fs::rename(original_receipt_location, &backed_up_receipt_location).await?;
+        std::fs::rename(original_receipt_location, &backed_up_receipt_location)?;
         tracing::info!(
             "Backed up original, untouched receipt to {}",
             backed_up_receipt_location.display()
@@ -154,7 +146,7 @@ impl CommandExecute for SplitReceipt {
 
 /// If the receipt can be parsed by this version of the installer, then we can use the actual
 /// types as they will have the same fields.
-async fn two_phased_can_parse_receipt_perfectly(
+fn two_phased_can_parse_receipt_perfectly(
     uninstall_args: &SplitReceipt,
     plan: InstallPlan,
 ) -> eyre::Result<()> {
@@ -249,8 +241,8 @@ async fn two_phased_can_parse_receipt_perfectly(
         }
     }
 
-    crate::plan::write_receipt(&phase1_plan, &uninstall_args.phase1_output).await?;
-    crate::plan::write_receipt(&phase2_plan, &uninstall_args.phase2_output).await?;
+    crate::plan::write_receipt(&phase1_plan, &uninstall_args.phase1_output)?;
+    crate::plan::write_receipt(&phase2_plan, &uninstall_args.phase2_output)?;
 
     Ok(())
 }
@@ -258,7 +250,7 @@ async fn two_phased_can_parse_receipt_perfectly(
 /// If the receipt cannot be parsed or is not compatible with this version of the installer, we
 /// fall back to naive JSON poking. Since the structure is version-specific, we have to be
 /// careful that we account for this.
-async fn two_phased_cannot_parse_receipt_perfectly(
+fn two_phased_cannot_parse_receipt_perfectly(
     uninstall_args: &SplitReceipt,
     receipt_str: &str,
 ) -> eyre::Result<()> {
@@ -397,8 +389,8 @@ async fn two_phased_cannot_parse_receipt_perfectly(
             _s => {},
         }
     }
-    crate::plan::write_receipt(&phase1_plan, &uninstall_args.phase1_output).await?;
-    crate::plan::write_receipt(&phase2_plan, &uninstall_args.phase2_output).await?;
+    crate::plan::write_receipt(&phase1_plan, &uninstall_args.phase1_output)?;
+    crate::plan::write_receipt(&phase2_plan, &uninstall_args.phase2_output)?;
 
     Ok(())
 }

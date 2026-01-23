@@ -1,3 +1,6 @@
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -5,7 +8,6 @@ use std::{
 
 use nix_config_parser::NixConfig;
 use rand::Rng;
-use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 use tracing::{span, Span};
 
 use crate::{
@@ -59,7 +61,7 @@ pub struct CreateOrMergeNixConfig {
 
 impl CreateOrMergeNixConfig {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         path: impl AsRef<Path>,
         pending_nix_config: NixConfig,
         header: String,
@@ -82,8 +84,7 @@ impl CreateOrMergeNixConfig {
                 &this.pending_nix_config,
                 &this.path,
                 is_existing_custom_conf,
-            )
-            .await?;
+            )?;
 
             if !merged_nix_config.settings().is_empty() {
                 return Ok(StatefulAction::uncompleted(this));
@@ -153,7 +154,7 @@ impl CreateOrMergeNixConfig {
         Ok((merged_nix_config, existing_nix_config.clone()))
     }
 
-    async fn validate_nix_config_against_path(
+    fn validate_nix_config_against_path(
         pending_nix_config: &NixConfig,
         existing_config_file: &Path,
         is_existing_custom_conf: bool,
@@ -168,7 +169,7 @@ impl CreateOrMergeNixConfig {
         }
 
         let parse_ret = if is_existing_custom_conf {
-            Self::maybe_comment_out_invalid_conf(&path).await?
+            Self::maybe_comment_out_invalid_conf(&path)?
         } else {
             NixConfig::parse_file(&path)
         };
@@ -187,11 +188,10 @@ impl CreateOrMergeNixConfig {
         Ok((merged_nix_config, existing_nix_config))
     }
 
-    async fn maybe_comment_out_invalid_conf(
+    fn maybe_comment_out_invalid_conf(
         path: &Path,
     ) -> Result<Result<NixConfig, nix_config_parser::ParseError>, ActionError> {
-        let contents = tokio::fs::read_to_string(path)
-            .await
+        let contents = std::fs::read_to_string(path)
             .map_err(|e| ActionErrorKind::Read(path.to_path_buf(), e))
             .map_err(Self::error)?;
         let mut lines = contents
@@ -217,15 +217,12 @@ impl CreateOrMergeNixConfig {
             }
         };
 
-        crate::util::write_atomic(path, &lines.join("\n"))
-            .await
-            .map_err(Self::error)?;
+        crate::util::write_atomic(path, &lines.join("\n")).map_err(Self::error)?;
 
         Ok(parse_ret)
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_or_merge_nix_config")]
 impl Action for CreateOrMergeNixConfig {
     fn action_tag() -> ActionTag {
@@ -278,7 +275,7 @@ impl Action for CreateOrMergeNixConfig {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         if tracing::enabled!(tracing::Level::TRACE) {
             let span = tracing::Span::current();
             span.record(
@@ -312,15 +309,17 @@ impl Action for CreateOrMergeNixConfig {
             // the appropriate user)
             .mode(0o600)
             .open(&temp_file_path)
-            .await
+
             .map_err(|e| {
                 Self::error(ActionErrorKind::Open(temp_file_path.clone(), e))
             })?;
 
         let (mut merged_nix_config, mut existing_nix_config) = if self.path.exists() {
-            let (merged_nix_config, existing_nix_config) =
-                Self::validate_nix_config_against_path(&self.pending_nix_config, &self.path, false)
-                    .await?;
+            let (merged_nix_config, existing_nix_config) = Self::validate_nix_config_against_path(
+                &self.pending_nix_config,
+                &self.path,
+                false,
+            )?;
             (merged_nix_config, Some(existing_nix_config))
         } else {
             (self.pending_nix_config.clone(), None)
@@ -329,8 +328,7 @@ impl Action for CreateOrMergeNixConfig {
         let mut new_config = String::new();
 
         if let Some(existing_nix_config) = existing_nix_config.as_mut() {
-            let mut discovered_buf = tokio::fs::read_to_string(&self.path)
-                .await
+            let mut discovered_buf = std::fs::read_to_string(&self.path)
                 .map_err(|e| Self::error(ActionErrorKind::Read(self.path.to_path_buf(), e)))?;
 
             // We append a newline to ensure that, in the case there are comments at the end of the
@@ -474,10 +472,8 @@ impl Action for CreateOrMergeNixConfig {
 
         temp_file
             .write_all(new_config.as_bytes())
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Write(temp_file_path.clone(), e)))?;
-        tokio::fs::set_permissions(&temp_file_path, PermissionsExt::from_mode(NIX_CONF_MODE))
-            .await
+        std::fs::set_permissions(&temp_file_path, PermissionsExt::from_mode(NIX_CONF_MODE))
             .map_err(|e| {
                 Self::error(ActionErrorKind::SetPermissions(
                     NIX_CONF_MODE,
@@ -487,17 +483,14 @@ impl Action for CreateOrMergeNixConfig {
             })?;
         temp_file
             .sync_all()
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Sync(temp_file_path.clone(), e)))?;
-        tokio::fs::rename(&temp_file_path, &self.path)
-            .await
-            .map_err(|e| {
-                Self::error(ActionErrorKind::Rename(
-                    temp_file_path.to_owned(),
-                    self.path.to_owned(),
-                    e,
-                ))
-            })?;
+        std::fs::rename(&temp_file_path, &self.path).map_err(|e| {
+            Self::error(ActionErrorKind::Rename(
+                temp_file_path.to_owned(),
+                self.path.to_owned(),
+                e,
+            ))
+        })?;
 
         Ok(())
     }
@@ -510,9 +503,8 @@ impl Action for CreateOrMergeNixConfig {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         crate::util::remove_file(&self.path, OnMissing::Ignore)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Remove(self.path.to_owned(), e)))?;
 
         Ok(())
@@ -523,10 +515,10 @@ impl Action for CreateOrMergeNixConfig {
 mod test {
     use super::*;
     use color_eyre::eyre::eyre;
-    use tokio::fs::write;
+    use std::fs::write;
 
-    #[tokio::test]
-    async fn creates_and_deletes_file() -> eyre::Result<()> {
+    #[test]
+    fn creates_and_deletes_file() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir.path().join("creates_and_deletes_file");
         let mut nix_config = NixConfig::new();
@@ -538,10 +530,9 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             Some("# opa".into()),
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
         let s = std::fs::read_to_string(&test_file)?;
         assert!(s.contains("# Generated by"));
@@ -550,15 +541,15 @@ mod test {
         assert!(s.contains("# opa"));
         assert!(NixConfig::parse_file(&test_file).is_ok());
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn creates_and_deletes_file_even_if_edited() -> eyre::Result<()> {
+    #[test]
+    fn creates_and_deletes_file_even_if_edited() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir
             .path()
@@ -572,30 +563,29 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             None,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        write(test_file.as_path(), "More content").await?;
+        write(test_file.as_path(), "More content")?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_exact_files_and_reverts_them() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_exact_files_and_reverts_them() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir
             .path()
             .join("recognizes_existing_exact_files_and_reverts_them");
 
         let test_content = "experimental-features = flakes";
-        write(test_file.as_path(), test_content).await?;
-        tokio::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE)).await?;
+        write(test_file.as_path(), test_content)?;
+        std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
 
         let mut nix_config = NixConfig::new();
         nix_config
@@ -606,20 +596,19 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             None,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_different_files_and_merges() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_different_files_and_merges() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir
             .path()
@@ -628,9 +617,8 @@ mod test {
         write(
             test_file.as_path(),
             "experimental-features = flakes\nwarn-dirty = true\n",
-        )
-        .await?;
-        tokio::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE)).await?;
+        )?;
+        std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
 
         let mut nix_config = NixConfig::new();
         nix_config
@@ -644,10 +632,9 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             None,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
         let s = std::fs::read_to_string(&test_file)?;
         assert!(s.contains("# Generated by"));
@@ -662,15 +649,15 @@ mod test {
         assert!(s.contains("warn-dirty = true"));
         assert!(NixConfig::parse_file(&test_file).is_ok());
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_different_files_and_fails_to_merge() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_different_files_and_fails_to_merge() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir
             .path()
@@ -679,9 +666,8 @@ mod test {
         write(
             test_file.as_path(),
             "experimental-features = flakes\nwarn-dirty = true\n",
-        )
-        .await?;
-        tokio::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE)).await?;
+        )?;
+        std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
 
         let mut nix_config = NixConfig::new();
         nix_config
@@ -690,7 +676,7 @@ mod test {
         nix_config
             .settings_mut()
             .insert("warn-dirty".into(), "false".into());
-        match CreateOrMergeNixConfig::plan(&test_file, nix_config, "".to_string(), None).await {
+        match CreateOrMergeNixConfig::plan(&test_file, nix_config, "".to_string(), None) {
             Err(err) => {
                 if let ActionErrorKind::Custom(e) = err.kind() {
                     match e.downcast_ref::<CreateOrMergeNixConfigError>() {
@@ -717,8 +703,8 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn preserves_comments() -> eyre::Result<()> {
+    #[test]
+    fn preserves_comments() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir.path().join("preserves_comments");
 
@@ -726,8 +712,8 @@ mod test {
             test_file.as_path(),
             "# test 2\n# test\nexperimental-features = flakes # some inline comment about experimental-features\n# the following line should be warn-dirty = true\nwarn-dirty = true # this is an inline comment\n# this is an ungrouped comment\n# this too",
         )
-        .await?;
-        tokio::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE)).await?;
+        ?;
+        std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
         let mut nix_config = NixConfig::new();
         nix_config
             .settings_mut()
@@ -737,10 +723,9 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             None,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
         let s = std::fs::read_to_string(&test_file)?;
         assert!(s.contains("# the following line should be warn-dirty = true\nwarn-dirty = true"));
@@ -752,20 +737,20 @@ mod test {
         assert!(s.contains("ca-references"));
         assert!(NixConfig::parse_file(&test_file).is_ok());
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn preserves_comments_edge_case() -> eyre::Result<()> {
+    #[test]
+    fn preserves_comments_edge_case() -> eyre::Result<()> {
         let temp_dir = tempfile::TempDir::new()?;
         let test_file = temp_dir.path().join("preserves_comments");
 
-        write(test_file.as_path(), " a = b\n c = d# lol\n# e = f").await?;
-        tokio::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE)).await?;
+        write(test_file.as_path(), " a = b\n c = d# lol\n# e = f")?;
+        std::fs::set_permissions(&test_file, PermissionsExt::from_mode(NIX_CONF_MODE))?;
         let mut nix_config = NixConfig::new();
         nix_config
             .settings_mut()
@@ -775,10 +760,9 @@ mod test {
             nix_config,
             "# Generated by".to_string(),
             None,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
         let s = std::fs::read_to_string(&test_file)?;
         assert!(s.contains("# Generated by"));
@@ -786,7 +770,7 @@ mod test {
         assert_eq!(s.matches("a = b").count(), 1);
         assert!(NixConfig::parse_file(&test_file).is_ok());
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 

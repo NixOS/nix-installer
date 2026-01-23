@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::process::Command;
 use tracing::{span, Span};
 
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, process::Command};
 
 use crate::{
     action::{
@@ -33,7 +35,7 @@ pub struct CreateVolumeService {
 
 impl CreateVolumeService {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         path: impl AsRef<Path>,
         mount_service_label: impl Into<String>,
         apfs_volume_label: String,
@@ -65,7 +67,6 @@ impl CreateVolumeService {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null()),
         )
-        .await
         .ok();
 
         if check_loaded.is_some() {
@@ -80,10 +81,7 @@ impl CreateVolumeService {
         if this.path.exists() {
             let discovered_plist: LaunchctlMountPlist =
                 plist::from_file(&this.path).map_err(Self::error)?;
-            match get_disk_info_for_label(&this.apfs_volume_label)
-                .await
-                .map_err(Self::error)?
-            {
+            match get_disk_info_for_label(&this.apfs_volume_label).map_err(Self::error)? {
                 Some(disk_info) => {
                     let expected_plist = generate_mount_plist(
                         &this.mount_service_label,
@@ -92,7 +90,6 @@ impl CreateVolumeService {
                         &this.mount_point,
                         encrypt,
                     )
-                    .await
                     .map_err(Self::error)?;
                     if discovered_plist != expected_plist {
                         tracing::trace!(
@@ -122,8 +119,7 @@ impl CreateVolumeService {
                     // so check if there exists a line, which is not a comment, that contains `/nix`
                     let fstab = PathBuf::from("/etc/fstab");
                     if fstab.exists() {
-                        let contents = tokio::fs::read_to_string(&fstab)
-                            .await
+                        let contents = std::fs::read_to_string(&fstab)
                             .map_err(|e| Self::error(ActionErrorKind::Read(fstab, e)))?;
                         for line in contents.lines() {
                             if line.starts_with('#') {
@@ -145,7 +141,6 @@ impl CreateVolumeService {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_volume_service")]
 impl Action for CreateVolumeService {
     fn action_tag() -> ActionTag {
@@ -182,7 +177,7 @@ impl Action for CreateVolumeService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             path,
             mount_service_label,
@@ -194,14 +189,10 @@ impl Action for CreateVolumeService {
 
         if *needs_bootout {
             crate::action::macos::retry_bootout(DARWIN_LAUNCHD_DOMAIN, mount_service_label)
-                .await
                 .map_err(Self::error)?;
         }
 
-        let disk_info = match get_disk_info_for_label(apfs_volume_label)
-            .await
-            .map_err(Self::error)?
-        {
+        let disk_info = match get_disk_info_for_label(apfs_volume_label).map_err(Self::error)? {
             Some(uuid) => uuid,
             None => {
                 return Err(Self::error(CreateVolumeServiceError::CannotDetermineUuid(
@@ -216,7 +207,6 @@ impl Action for CreateVolumeService {
             mount_point,
             *encrypt,
         )
-        .await
         .map_err(Self::error)?;
 
         let mut options = OpenOptions::new();
@@ -224,13 +214,11 @@ impl Action for CreateVolumeService {
 
         let mut file = options
             .open(&path)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Open(path.to_owned(), e)))?;
 
         let mut buf = Vec::new();
         plist::to_writer_xml(&mut buf, &generated_plist).map_err(Self::error)?;
         file.write_all(&buf)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Write(path.to_owned(), e)))?;
 
         Ok(())
@@ -244,9 +232,8 @@ impl Action for CreateVolumeService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         crate::util::remove_file(&self.path, OnMissing::Ignore)
-            .await
             .map_err(|e| Self::error(ActionErrorKind::Remove(self.path.to_owned(), e)))?;
 
         Ok(())
@@ -254,7 +241,7 @@ impl Action for CreateVolumeService {
 }
 
 /// This function must be able to operate at both plan and execute time.
-async fn generate_mount_plist(
+fn generate_mount_plist(
     mount_service_label: &str,
     apfs_volume_label: &str,
     uuid: uuid::Uuid,

@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Cursor, path::PathBuf};
 
 #[cfg(feature = "cli")]
 use clap::ArgAction;
-use tokio::process::Command;
+use std::process::Command;
 use which::which;
 
 use super::ShellProfileLocations;
@@ -69,13 +69,12 @@ pub struct Macos {
     pub root_disk: Option<String>,
 }
 
-async fn default_root_disk() -> Result<String, PlannerError> {
+fn default_root_disk() -> Result<String, PlannerError> {
     let buf = execute_command(
         Command::new("/usr/sbin/diskutil")
             .args(["info", "-plist", "/"])
             .stdin(std::process::Stdio::null()),
     )
-    .await
     .map_err(|e| PlannerError::Custom(Box::new(e)))?
     .stdout;
     let the_plist: DiskUtilInfoOutput = plist::from_reader(Cursor::new(buf))?;
@@ -83,30 +82,28 @@ async fn default_root_disk() -> Result<String, PlannerError> {
     Ok(the_plist.parent_whole_disk)
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "macos")]
 impl Planner for Macos {
-    async fn default() -> Result<Self, PlannerError> {
+    fn default() -> Result<Self, PlannerError> {
         Ok(Self {
-            settings: CommonSettings::default().await?,
-            root_disk: Some(default_root_disk().await?),
+            settings: CommonSettings::default()?,
+            root_disk: Some(default_root_disk()?),
             case_sensitive: false,
             encrypt: None,
             volume_label: "Nix Store".into(),
         })
     }
 
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         let root_disk = match &self.root_disk {
             root_disk @ Some(_) => root_disk.clone(),
-            None => Some(default_root_disk().await?),
+            None => Some(default_root_disk()?),
         };
 
         let encrypt = match self.encrypt {
             Some(choice) => {
                 if let Some(diskutil_info) =
                     crate::action::macos::get_disk_info_for_label(&self.volume_label)
-                        .await
                         .ok()
                         .flatten()
                 {
@@ -126,9 +123,7 @@ impl Planner for Macos {
                         .arg("isactive")
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
-                        .process_group(0)
                         .output()
-                        .await
                         .map_err(|e| PlannerError::Custom(Box::new(e)))?;
 
                     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -140,7 +135,6 @@ impl Planner for Macos {
                 let existing_store_volume_is_encrypted = {
                     if let Some(diskutil_info) =
                         crate::action::macos::get_disk_info_for_label(&self.volume_label)
-                            .await
                             .ok()
                             .flatten()
                     {
@@ -163,14 +157,12 @@ impl Planner for Macos {
                 self.case_sensitive,
                 encrypt,
             )
-            .await
             .map_err(PlannerError::Action)?
             .boxed(),
         );
 
         plan.push(
             ProvisionNix::plan(&self.settings)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -178,7 +170,6 @@ impl Planner for Macos {
         // e.g. https://github.com/NixOS/nix/issues/8444
         plan.push(
             CreateUsersAndGroups::plan(self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -187,19 +178,16 @@ impl Planner for Macos {
                 PathBuf::from(NIX_STORE_LOCATION),
                 PathBuf::from("/nix/var"),
             ])
-            .await
             .map_err(PlannerError::Action)?
             .boxed(),
         );
         plan.push(
             ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             ConfigureRemoteBuilding::plan()
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -207,7 +195,6 @@ impl Planner for Macos {
         if self.settings.modify_profile {
             plan.push(
                 CreateNixHookService::plan()
-                    .await
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -215,14 +202,12 @@ impl Planner for Macos {
 
         plan.push(
             ConfigureUpstreamInitService::plan(InitSystem::Launchd, true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
 
         plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -252,10 +237,8 @@ impl Planner for Macos {
         Ok(map)
     }
 
-    async fn configured_settings(
-        &self,
-    ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default().await?.settings()?;
+    fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
+        let default = Self::default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -268,7 +251,7 @@ impl Planner for Macos {
         Ok(settings)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError> {
+    fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => Ok(()),
@@ -279,14 +262,14 @@ impl Planner for Macos {
         }
     }
 
-    async fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
-        check_nix_darwin_not_installed().await?;
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+        check_nix_darwin_not_installed()?;
 
         Ok(())
     }
 
-    async fn pre_install_check(&self) -> Result<(), PlannerError> {
-        check_suis().await?;
+    fn pre_install_check(&self) -> Result<(), PlannerError> {
+        check_suis()?;
         check_not_running_in_rosetta()?;
 
         Ok(())
@@ -299,19 +282,17 @@ impl From<Macos> for BuiltinPlanner {
     }
 }
 
-async fn check_nix_darwin_not_installed() -> Result<(), PlannerError> {
+fn check_nix_darwin_not_installed() -> Result<(), PlannerError> {
     let has_darwin_rebuild = which("darwin-rebuild").is_ok();
     let has_darwin_option = which("darwin-option").is_ok();
 
     let activate_system_present = Command::new("launchctl")
         .arg("print")
         .arg("system/org.nixos.activate-system")
-        .process_group(0)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
-        .await
         .map(|v| v.success())
         .unwrap_or(false);
 
@@ -342,8 +323,8 @@ fn check_not_running_in_rosetta() -> Result<(), PlannerError> {
     Ok(())
 }
 
-async fn check_suis() -> Result<(), PlannerError> {
-    let policies: profiles::Policies = match profiles::load().await {
+fn check_suis() -> Result<(), PlannerError> {
+    let policies: profiles::Policies = match profiles::load() {
         Ok(pol) => pol,
         Err(e) => {
             tracing::warn!(

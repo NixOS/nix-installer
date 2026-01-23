@@ -1,6 +1,6 @@
 /*! Configurable knobs and their related errors
 */
-use std::{collections::HashMap, fmt::Display, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 #[cfg(feature = "cli")]
 use clap::{
@@ -13,10 +13,17 @@ pub const SCRATCH_DIR: &str = "/nix/temp-install-dir";
 
 pub const DEFAULT_NIX_BUILD_USER_GROUP_NAME: &str = "nixbld";
 
-pub const NIX_TARBALL_URL: &str = match option_env!("NIX_TARBALL_URL") {
-    Some(url) => url,
-    None => "",
-};
+/// The embedded Nix tarball (zstd compressed)
+pub const EMBEDDED_NIX_TARBALL: &[u8] = include_bytes!(concat!(env!("NIX_TARBALL_PATH")));
+
+/// The store path of the nix package in the embedded tarball
+pub const NIX_STORE_PATH: &str = env!("NIX_STORE_PATH");
+
+/// The store path of the nss-cacert package in the embedded tarball
+pub const NSS_CACERT_STORE_PATH: &str = env!("NSS_CACERT_STORE_PATH");
+
+/// The version of Nix embedded in this installer
+pub const NIX_VERSION: &str = env!("NIX_VERSION");
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -124,16 +131,11 @@ pub struct CommonSettings {
     )]
     pub nix_build_user_id_base: u32,
 
-    /// The Nix package URL
+    /// An SSL cert file to use; sets `ssl-cert-file` in `/etc/nix/nix.conf`
     #[cfg_attr(
         feature = "cli",
-        clap(long, env = "NIX_INSTALLER_NIX_PACKAGE_URL", global = true, value_parser = clap::value_parser!(UrlOrPath), default_value = None)
+        clap(long, env = "NIX_INSTALLER_SSL_CERT_FILE", global = true)
     )]
-    pub nix_package_url: Option<UrlOrPath>,
-
-    #[clap(from_global)]
-    pub proxy: Option<Url>,
-    #[clap(from_global)]
     pub ssl_cert_file: Option<PathBuf>,
 
     /// Extra configuration lines for `/etc/nix.conf`
@@ -201,7 +203,7 @@ pub(crate) fn default_nix_build_group_id() -> u32 {
 
 impl CommonSettings {
     /// The default settings for the given Architecture & Operating System
-    pub async fn default() -> Result<Self, InstallSettingsError> {
+    pub fn default() -> Result<Self, InstallSettingsError> {
         let nix_build_user_prefix;
 
         use target_lexicon::{Architecture, OperatingSystem};
@@ -237,12 +239,10 @@ impl CommonSettings {
             nix_build_user_id_base: default_nix_build_user_id_base(),
             nix_build_user_count: 32,
             nix_build_user_prefix: nix_build_user_prefix.to_string(),
-            nix_package_url: None,
-            proxy: Default::default(),
+            ssl_cert_file: None,
             extra_conf: Default::default(),
             force: false,
             skip_nix_conf: false,
-            ssl_cert_file: Default::default(),
             add_channel: false,
         })
     }
@@ -256,12 +256,10 @@ impl CommonSettings {
             nix_build_user_prefix,
             nix_build_user_id_base,
             nix_build_user_count,
-            nix_package_url,
-            proxy,
+            ssl_cert_file,
             extra_conf,
             force,
             skip_nix_conf,
-            ssl_cert_file,
             add_channel,
         } = self;
         let mut map = HashMap::default();
@@ -290,11 +288,6 @@ impl CommonSettings {
             "nix_build_user_count".into(),
             serde_json::to_value(nix_build_user_count)?,
         );
-        map.insert(
-            "nix_package_url".into(),
-            serde_json::to_value(nix_package_url)?,
-        );
-        map.insert("proxy".into(), serde_json::to_value(proxy)?);
         map.insert("ssl_cert_file".into(), serde_json::to_value(ssl_cert_file)?);
         map.insert("extra_conf".into(), serde_json::to_value(extra_conf)?);
         map.insert("force".into(), serde_json::to_value(force)?);
@@ -306,18 +299,17 @@ impl CommonSettings {
     }
 }
 
-async fn linux_detect_systemd_started() -> bool {
+fn linux_detect_systemd_started() -> bool {
     use std::process::Stdio;
 
     let mut started = false;
     if std::path::Path::new("/run/systemd/system").exists() {
-        started = tokio::process::Command::new("systemctl")
+        started = std::process::Command::new("systemctl")
             .arg("status")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .await
             .ok()
             .map(|exit| exit.success())
             .unwrap_or(false)
@@ -359,17 +351,17 @@ pub struct InitSettings {
 
 impl InitSettings {
     /// The default settings for the given Architecture & Operating System
-    pub async fn default() -> Result<Self, InstallSettingsError> {
+    pub fn default() -> Result<Self, InstallSettingsError> {
         use target_lexicon::{Architecture, OperatingSystem};
         let (init, start_daemon) = match (Architecture::host(), OperatingSystem::host()) {
             (Architecture::X86_64, OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                (InitSystem::Systemd, linux_detect_systemd_started().await)
+                (InitSystem::Systemd, linux_detect_systemd_started())
             },
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => (InitSystem::Launchd, true),
@@ -431,90 +423,6 @@ pub enum InstallSettingsError {
     ),
     #[error("No supported init system found")]
     InitNotSupported,
-    #[error(transparent)]
-    UrlOrPath(#[from] UrlOrPathError),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum UrlOrPathError {
-    #[error("Error parsing URL `{0}`")]
-    Url(String, #[source] url::ParseError),
-    #[error("The specified path `{0}` does not exist")]
-    PathDoesNotExist(PathBuf),
-    #[error("Error fetching URL `{0}`")]
-    Reqwest(Url, #[source] reqwest::Error),
-    #[error("I/O error when accessing `{0}`")]
-    Io(PathBuf, #[source] std::io::Error),
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize, Clone)]
-pub enum UrlOrPath {
-    Url(Url),
-    Path(PathBuf),
-}
-
-impl Display for UrlOrPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UrlOrPath::Url(url) => f.write_fmt(format_args!("{url}")),
-            UrlOrPath::Path(path) => f.write_fmt(format_args!("{}", path.display())),
-        }
-    }
-}
-
-impl FromStr for UrlOrPath {
-    type Err = UrlOrPathError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match Url::parse(s) {
-            Ok(url) => Ok(UrlOrPath::Url(url)),
-            Err(url::ParseError::RelativeUrlWithoutBase) => {
-                // This is most likely a relative path (`./boop` or `boop`)
-                // or an absolute path (`/boop`)
-                //
-                // So we'll see if such a path exists, and if so, use it
-                let path = PathBuf::from(s);
-                if path.exists() {
-                    Ok(UrlOrPath::Path(path))
-                } else {
-                    Err(UrlOrPathError::PathDoesNotExist(path))
-                }
-            },
-            Err(e) => Err(UrlOrPathError::Url(s.to_string(), e)),
-        }
-    }
-}
-
-#[cfg(feature = "cli")]
-impl clap::builder::TypedValueParser for UrlOrPath {
-    type Value = UrlOrPath;
-
-    fn parse_ref(
-        &self,
-        cmd: &clap::Command,
-        _arg: Option<&clap::Arg>,
-        value: &std::ffi::OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        let value_str = value.to_str().ok_or_else(|| {
-            let mut err = clap::Error::new(clap::error::ErrorKind::InvalidValue);
-            err.insert(
-                ContextKind::InvalidValue,
-                ContextValue::String(format!("`{value:?}` not a UTF-8 string")),
-            );
-            err
-        })?;
-        match UrlOrPath::from_str(value_str) {
-            Ok(v) => Ok(v),
-            Err(from_str_error) => {
-                let mut err = clap::Error::new(clap::error::ErrorKind::InvalidValue).with_cmd(cmd);
-                err.insert(
-                    clap::error::ContextKind::Custom,
-                    clap::error::ContextValue::String(from_str_error.to_string()),
-                );
-                Err(err)
-            },
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize, Clone)]
@@ -582,7 +490,7 @@ impl clap::builder::TypedValueParser for UrlOrPathOrString {
 
 #[cfg(test)]
 mod tests {
-    use super::{FromStr, PathBuf, Url, UrlOrPath, UrlOrPathOrString};
+    use super::{FromStr, PathBuf, Url, UrlOrPathOrString};
 
     #[test]
     fn url_or_path_or_string_parses() -> Result<(), Box<dyn std::error::Error>> {
@@ -602,24 +510,6 @@ mod tests {
         assert_eq!(
             UrlOrPathOrString::from_str("Boop")?,
             UrlOrPathOrString::String(String::from("Boop")),
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn url_or_path_parses() -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(
-            UrlOrPath::from_str("https://boop.bleat")?,
-            UrlOrPath::Url(Url::from_str("https://boop.bleat")?),
-        );
-        assert_eq!(
-            UrlOrPath::from_str("file:///boop/bleat")?,
-            UrlOrPath::Url(Url::from_str("file:///boop/bleat")?),
-        );
-        // The file *must* exist!
-        assert_eq!(
-            UrlOrPath::from_str(file!())?,
-            UrlOrPath::Path(PathBuf::from_str(file!())?),
         );
         Ok(())
     }

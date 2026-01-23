@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
@@ -20,14 +20,13 @@ pub struct CreateApfsVolume {
 
 impl CreateApfsVolume {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         disk: impl AsRef<Path>,
         name: String,
         case_sensitive: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let output =
             execute_command(Command::new("/usr/sbin/diskutil").args(["apfs", "list", "-plist"]))
-                .await
                 .map_err(Self::error)?;
 
         let parsed: DiskUtilApfsListOutput =
@@ -52,7 +51,6 @@ impl CreateApfsVolume {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_apfs_volume")]
 impl Action for CreateApfsVolume {
     fn action_tag() -> ActionTag {
@@ -81,7 +79,7 @@ impl Action for CreateApfsVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             disk,
             name,
@@ -90,7 +88,6 @@ impl Action for CreateApfsVolume {
 
         execute_command(
             Command::new("/usr/sbin/diskutil")
-                .process_group(0)
                 .args([
                     "apfs",
                     "addVolume",
@@ -105,7 +102,6 @@ impl Action for CreateApfsVolume {
                 ])
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())
@@ -123,11 +119,9 @@ impl Action for CreateApfsVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let currently_mounted = {
-            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name)
-                .await
-                .map_err(Self::error)?;
+            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name).map_err(Self::error)?;
             the_plist.is_mounted()
         };
 
@@ -136,11 +130,9 @@ impl Action for CreateApfsVolume {
         if currently_mounted {
             execute_command(
                 Command::new("/usr/sbin/diskutil")
-                    .process_group(0)
                     .args(["unmount", "force", &self.name])
                     .stdin(std::process::Stdio::null()),
             )
-            .await
             .map_err(Self::error)?;
         } else {
             tracing::debug!("Volume was already unmounted, can skip unmounting")
@@ -159,14 +151,12 @@ impl Action for CreateApfsVolume {
         let mut retry_tokens: usize = 10;
         loop {
             let mut command = Command::new("/usr/sbin/diskutil");
-            command.process_group(0);
             command.args(["apfs", "deleteVolume", &self.name]);
             command.stdin(std::process::Stdio::null());
-            tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for volume deletion to succeed");
+            tracing::debug!(%retry_tokens, command = ?command, "Waiting for volume deletion to succeed");
 
             let output = command
                 .output()
-                .await
                 .map_err(|e| ActionErrorKind::command(&command, e))
                 .map_err(Self::error)?;
 
@@ -180,7 +170,7 @@ impl Action for CreateApfsVolume {
                 retry_tokens = retry_tokens.saturating_sub(1);
             }
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            std::thread::sleep(Duration::from_millis(500));
         }
 
         Ok(())

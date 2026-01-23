@@ -5,8 +5,8 @@ use std::time::SystemTime;
 use clap::{ArgAction, Parser, Subcommand};
 use eyre::Context as _;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tokio::process::Command;
 
 use crate::action::base::{AddUserToGroup, CreateGroup, CreateUser};
 use crate::action::common::{ConfigureShellProfile, CreateUsersAndGroups};
@@ -115,10 +115,9 @@ impl Repair {
     }
 }
 
-#[async_trait::async_trait]
 impl CommandExecute for Repair {
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn execute(self) -> eyre::Result<ExitCode> {
+    fn execute(self) -> eyre::Result<ExitCode> {
         let command = self.command();
 
         ensure_root()?;
@@ -139,8 +138,7 @@ impl CommandExecute for Repair {
                     nix_build_user_prefix,
                     nix_build_user_count,
                     nix_build_group_name,
-                )
-                .await?;
+                )?;
 
                 let user_base = crate::settings::default_nix_build_user_id_base();
                 let brief_summary = format!(
@@ -165,16 +163,11 @@ impl CommandExecute for Repair {
                     &brief_repair_summary,
                     PromptChoice::Yes,
                     true,
-                )
-                .await?
-                {
+                )? {
                     PromptChoice::Yes => break,
-                    PromptChoice::No => {
-                        crate::cli::interaction::clean_exit_with_message(
-                            "Okay, not continuing with the repair. Bye!",
-                        )
-                        .await
-                    },
+                    PromptChoice::No => crate::cli::interaction::clean_exit_with_message(
+                        "Okay, not continuing with the repair. Bye!",
+                    ),
                     PromptChoice::Explain => (),
                 }
             }
@@ -186,7 +179,6 @@ impl CommandExecute for Repair {
         let updated_receipt = match command.clone() {
             RepairKind::Hooks => {
                 let reconfigure = ConfigureShellProfile::plan(ShellProfileLocations::default())
-                    .await
                     .map_err(PlannerError::Action)?
                     .boxed();
                 repair_actions.push(reconfigure);
@@ -194,7 +186,6 @@ impl CommandExecute for Repair {
                 match OperatingSystem::host() {
                     OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                         let reconfigure = crate::action::macos::ConfigureRemoteBuilding::plan()
-                            .await
                             .map_err(PlannerError::Action)?
                             .boxed();
                         repair_actions.push(reconfigure);
@@ -234,8 +225,7 @@ impl CommandExecute for Repair {
                     &nix_build_user_prefix,
                     nix_build_user_count,
                     &nix_build_group_name,
-                )
-                .await?;
+                )?;
 
                 let user_prefix = maybe_users_and_groups_from_receipt.user_prefix;
                 let user_count = maybe_users_and_groups_from_receipt.user_count;
@@ -258,11 +248,9 @@ impl CommandExecute for Repair {
                 let group_plist = {
                     let buf = execute_command(
                         Command::new("/usr/bin/dscl")
-                            .process_group(0)
                             .args(["-plist", ".", "-read", &format!("/Groups/{group_name}")])
                             .stdin(std::process::Stdio::null()),
-                    )
-                    .await?
+                    )?
                     .stdout;
 
                     let group_plist: GroupPlist = plist::from_bytes(&buf)?;
@@ -305,11 +293,9 @@ impl CommandExecute for Repair {
                 for (user_idx, user_name) in &expected_users {
                     let ret = execute_command(
                         Command::new("/usr/bin/dscl")
-                            .process_group(0)
                             .args([".", "-read", &format!("/Users/{user_name}")])
                             .stdin(std::process::Stdio::null()),
-                    )
-                    .await;
+                    );
 
                     if let Err(e) = ret {
                         tracing::debug!(%e, user_name, "Couldn't read user, assuming it's missing");
@@ -336,13 +322,12 @@ impl CommandExecute for Repair {
 
                     execute_command(
                         Command::new("/usr/bin/dscl")
-                            .process_group(0)
+
                             // NOTE(cole-h): even though it says "create" it's really "create-or-update"
                             .args([".", "-create", &format!("/Users/{user_name}"), "UniqueID"])
                             .arg(temp_user_id.to_string())
                             .stdin(std::process::Stdio::null()),
-                    )
-                    .await?;
+                    )?;
                 }
 
                 let mut create_users = Vec::with_capacity(user_count as usize);
@@ -356,8 +341,7 @@ impl CommandExecute for Repair {
                         group_gid,
                         format!("Nix build user {idx}"),
                         false,
-                    )
-                    .await?;
+                    )?;
                     create_users.push(create_user);
                 }
 
@@ -419,7 +403,7 @@ impl CommandExecute for Repair {
         };
 
         for mut action in repair_actions {
-            if let Err(err) = action.try_execute().await {
+            if let Err(err) = action.try_execute() {
                 println!("{:#?}", err);
                 return Ok(ExitCode::FAILURE);
             }
@@ -433,10 +417,10 @@ impl CommandExecute for Repair {
 
             let mut old_receipt = std::path::PathBuf::from(RECEIPT_LOCATION);
             old_receipt.set_extension(format!("pre-repair.{timestamp_millis}.json"));
-            tokio::fs::copy(RECEIPT_LOCATION, &old_receipt).await?;
+            std::fs::copy(RECEIPT_LOCATION, &old_receipt)?;
             tracing::info!("Backed up pre-repair receipt to {}", old_receipt.display());
 
-            updated_receipt.write_receipt().await?;
+            updated_receipt.write_receipt()?;
             tracing::info!("Wrote updated receipt");
         }
 
@@ -474,11 +458,11 @@ where
 }
 
 #[tracing::instrument]
-async fn get_existing_receipt() -> Option<InstallPlan> {
+fn get_existing_receipt() -> Option<InstallPlan> {
     match std::path::Path::new(RECEIPT_LOCATION).exists() {
         true => {
             tracing::debug!("Reading existing receipt");
-            let install_plan_string = tokio::fs::read_to_string(RECEIPT_LOCATION).await.ok();
+            let install_plan_string = std::fs::read_to_string(RECEIPT_LOCATION).ok();
 
             match install_plan_string {
                 Some(s) => match serde_json::from_str::<InstallPlan>(s.as_str()) {
@@ -558,12 +542,12 @@ struct UsersAndGroupsMeta {
     receipt_action_idx_create_group: Option<(InstallPlan, usize, StatefulAction<CreateGroup>)>,
 }
 
-async fn maybe_users_and_groups_from_receipt(
+fn maybe_users_and_groups_from_receipt(
     nix_build_user_prefix: &str,
     nix_build_user_count: u32,
     nix_build_group_name: &str,
 ) -> eyre::Result<UsersAndGroupsMeta> {
-    let existing_receipt = get_existing_receipt().await;
+    let existing_receipt = get_existing_receipt();
     let maybe_create_users_and_groups_idx_action = find_users_and_groups(existing_receipt)?;
 
     match maybe_create_users_and_groups_idx_action {

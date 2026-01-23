@@ -19,8 +19,6 @@
     , ...
     }:
     let
-      nix_version = nix.packages.x86_64-linux.default.version;
-      nix_tarball_url_prefix = "https://releases.nixos.org/nix/nix-${nix_version}/nix-${nix_version}-";
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
       forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: (forSystem system f));
@@ -31,15 +29,65 @@
         lib = pkgs.lib;
       };
 
+      # Build the nix binary tarball and recompress with zstd
+      # This is similar to nix's packaging/binary-tarball.nix but outputs zstd
+      nixTarballZstd = { pkgs, system }:
+        let
+          nixPkg = nix.packages.${system}.nix;
+          cacertPkg = pkgs.cacert;
+          installerClosureInfo = pkgs.buildPackages.closureInfo {
+            rootPaths = [ nixPkg cacertPkg ];
+          };
+        in
+        pkgs.runCommand "nix-tarball-zstd-${nixPkg.version}"
+          {
+            nativeBuildInputs = [ pkgs.zstd ];
+            # Export these so they can be read without IFD
+            passthru = {
+              inherit nixPkg cacertPkg;
+              nixStorePath = nixPkg.outPath;
+              cacertStorePath = cacertPkg.outPath;
+              nixVersion = nixPkg.version;
+            };
+          } ''
+          mkdir -p $out
+
+          dir=nix-${nixPkg.version}-${system}
+
+          # Copy the reginfo (closure registration) to temp dir
+          cp ${installerClosureInfo}/registration $TMPDIR/reginfo
+
+          # Create tarball matching nix's binary-tarball.nix structure
+          # Use --hard-dereference to convert symlinks to regular files
+          # Use --transform to rewrite /nix/store paths to $dir/store
+          tar cf - \
+            --owner=0 --group=0 --mode=u+rw,uga+r \
+            --mtime='1970-01-01' \
+            --absolute-names \
+            --hard-dereference \
+            --transform "s,$TMPDIR/reginfo,$dir/.reginfo," \
+            --transform "s,$NIX_STORE,$dir/store,S" \
+            $TMPDIR/reginfo \
+            $(cat ${installerClosureInfo}/store-paths) \
+            | zstd -19 -T0 -o $out/nix.tar.zst
+        '';
+
       installerPackage = { pkgs, stdenv, buildPackages, extraRustFlags ? "" }:
         let
           craneLib = crane.mkLib pkgs;
+          tarballPkg = nixTarballZstd { inherit pkgs; system = stdenv.hostPlatform.system; };
+          # Get paths directly from passthru - no IFD!
+          nixStorePath = tarballPkg.passthru.nixStorePath;
+          cacertStorePath = tarballPkg.passthru.cacertStorePath;
+          nixVersion = tarballPkg.passthru.nixVersion;
           sharedAttrs = {
             src = builtins.path {
               name = "nix-installer-source";
               path = self;
               filter = (path: type: baseNameOf path != "nix" && baseNameOf path != ".github");
             };
+
+            nativeBuildInputs = [ tarballPkg ];
 
             # Required to link build scripts.
             depsBuildBuild = [ buildPackages.stdenv.cc ];
@@ -59,8 +107,13 @@
         craneLib.buildPackage (sharedAttrs // {
           cargoArtifacts = craneLib.buildDepsOnly sharedAttrs;
           env = sharedAttrs.env // {
-            RUSTFLAGS = "--cfg tokio_unstable${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
-            NIX_TARBALL_URL = "${nix_tarball_url_prefix}${stdenv.hostPlatform.system}.tar.xz";
+            RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
+            # Path to the embedded tarball
+            NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
+            # Store paths known at compile time (no IFD - these come from passthru)
+            NIX_STORE_PATH = nixStorePath;
+            NSS_CACERT_STORE_PATH = cacertStorePath;
+            NIX_VERSION = nixVersion;
           };
           postInstall = ''
             cp nix-installer.sh $out/bin/nix-installer.sh
@@ -80,16 +133,20 @@
         };
 
 
-      devShells = forAllSystems ({ pkgs, ... }:
+      devShells = forAllSystems ({ system, pkgs, ... }:
         let
           check = import ./nix/check.nix { inherit pkgs; };
+          tarballPkg = nixTarballZstd { inherit pkgs system; };
         in
         {
           default = pkgs.mkShell {
             name = "nix-install-shell";
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
-            NIX_TARBALL_URL = "${nix_tarball_url_prefix}${pkgs.stdenv.hostPlatform.system}.tar.xz";
+            NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
+            NIX_STORE_PATH = tarballPkg.passthru.nixStorePath;
+            NSS_CACERT_STORE_PATH = tarballPkg.passthru.cacertStorePath;
+            NIX_VERSION = tarballPkg.passthru.nixVersion;
 
             buildInputs = with pkgs; [
               rustc
@@ -131,10 +188,11 @@
           # Extract version from Cargo.toml
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
           installerVersion = cargoToml.package.version;
+          nixVersion = nix.packages.${pkgs.system}.nix.version;
           # Extract major.minor from both versions
           versionParts = ver: builtins.match "([0-9]+)\\.([0-9]+).*" ver;
           installerMajorMinor = versionParts installerVersion;
-          nixMajorMinor = versionParts nix_version;
+          nixMajorMinor = versionParts nixVersion;
         in
         {
           check-rustfmt = pkgs.runCommand "check-rustfmt" { buildInputs = [ check.check-rustfmt ]; } ''
@@ -159,9 +217,9 @@
           '';
           check-version-consistency =
             assert installerMajorMinor == nixMajorMinor ||
-              throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nix_version} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
+              throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nixVersion} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
             pkgs.runCommand "check-version-consistency" { } ''
-              echo "Version consistency check passed: installer ${installerVersion} matches Nix ${nix_version}"
+              echo "Version consistency check passed: installer ${installerVersion} matches Nix ${nixVersion}"
               touch $out
             '';
         });

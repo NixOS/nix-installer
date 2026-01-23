@@ -1,7 +1,7 @@
 use std::os::unix::process::ExitStatusExt as _;
 use std::path::{Path, PathBuf};
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionTag, StatefulAction};
@@ -33,7 +33,7 @@ pub struct SetTmutilExclusion {
 
 impl SetTmutilExclusion {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
         Ok(Self {
             path: path.as_ref().to_path_buf(),
         }
@@ -41,7 +41,6 @@ impl SetTmutilExclusion {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "set_tmutil_exclusion")]
 impl Action for SetTmutilExclusion {
     fn action_tag() -> ActionTag {
@@ -67,15 +66,13 @@ impl Action for SetTmutilExclusion {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let tmutil_ret = execute_command(
             Command::new("tmutil")
-                .process_group(0)
                 .arg("addexclusion")
                 .arg(&self.path)
                 .stdin(std::process::Stdio::null()),
-        )
-        .await;
+        );
 
         match tmutil_ret {
             Ok(_) => Ok(()),
@@ -97,15 +94,13 @@ impl Action for SetTmutilExclusion {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let tmutil_ret = execute_command(
             Command::new("tmutil")
-                .process_group(0)
                 .arg("removeexclusion")
                 .arg(&self.path)
                 .stdin(std::process::Stdio::null()),
-        )
-        .await;
+        );
 
         match tmutil_ret {
             Ok(_) => Ok(()),

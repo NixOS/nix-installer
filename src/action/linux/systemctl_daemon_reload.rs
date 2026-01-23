@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
@@ -16,7 +16,7 @@ pub struct SystemctlDaemonReload;
 
 impl SystemctlDaemonReload {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         if !Path::new("/run/systemd/system").exists() {
             return Err(Self::error(ActionErrorKind::SystemdMissing));
         }
@@ -29,7 +29,6 @@ impl SystemctlDaemonReload {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "systemctl_daemon_reload")]
 impl Action for SystemctlDaemonReload {
     fn action_tag() -> ActionTag {
@@ -48,14 +47,12 @@ impl Action for SystemctlDaemonReload {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         execute_command(
             Command::new("systemctl")
-                .process_group(0)
                 .arg("daemon-reload")
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())
@@ -66,14 +63,12 @@ impl Action for SystemctlDaemonReload {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         execute_command(
             Command::new("systemctl")
-                .process_group(0)
                 .arg("daemon-reload")
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())

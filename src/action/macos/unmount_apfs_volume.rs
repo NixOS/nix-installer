@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionTag, StatefulAction};
@@ -21,20 +21,17 @@ pub struct UnmountApfsVolume {
 
 impl UnmountApfsVolume {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
-        disk: impl AsRef<Path>,
-        name: String,
-    ) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(disk: impl AsRef<Path>, name: String) -> Result<StatefulAction<Self>, ActionError> {
         let disk = disk.as_ref().to_owned();
         Ok(Self { disk, name }.into())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan_skip_if_already_mounted_to_nix(
+    pub fn plan_skip_if_already_mounted_to_nix(
         disk: impl AsRef<Path>,
         name: String,
     ) -> Result<StatefulAction<Self>, ActionError> {
-        let diskinfo = DiskUtilInfoOutput::for_volume_name(&name).await;
+        let diskinfo = DiskUtilInfoOutput::for_volume_name(&name);
 
         let task = Self {
             disk: disk.as_ref().to_owned(),
@@ -53,7 +50,6 @@ impl UnmountApfsVolume {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "unmount_apfs_volume")]
 impl Action for UnmountApfsVolume {
     fn action_tag() -> ActionTag {
@@ -77,11 +73,9 @@ impl Action for UnmountApfsVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let currently_mounted = {
-            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name)
-                .await
-                .map_err(Self::error)?;
+            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name).map_err(Self::error)?;
 
             the_plist.is_mounted()
         };
@@ -89,12 +83,10 @@ impl Action for UnmountApfsVolume {
         if currently_mounted {
             execute_command(
                 Command::new("/usr/sbin/diskutil")
-                    .process_group(0)
                     .args(["unmount", "force"])
                     .arg(&self.name)
                     .stdin(std::process::Stdio::null()),
             )
-            .await
             .map_err(Self::error)?;
         } else {
             tracing::debug!("Volume was already unmounted, can skip unmounting")
@@ -108,11 +100,9 @@ impl Action for UnmountApfsVolume {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let currently_mounted = {
-            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name)
-                .await
-                .map_err(Self::error)?;
+            let the_plist = DiskUtilInfoOutput::for_volume_name(&self.name).map_err(Self::error)?;
 
             the_plist.is_mounted()
         };
@@ -120,12 +110,10 @@ impl Action for UnmountApfsVolume {
         if currently_mounted {
             execute_command(
                 Command::new("/usr/sbin/diskutil")
-                    .process_group(0)
                     .args(["unmount", "force"])
                     .arg(&self.name)
                     .stdin(std::process::Stdio::null()),
             )
-            .await
             .map_err(Self::error)?;
         } else {
             tracing::debug!("Volume was already unmounted, can skip unmounting")

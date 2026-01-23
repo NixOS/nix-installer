@@ -1,8 +1,8 @@
 use std::os::unix::process::ExitStatusExt;
 
 use nix::unistd::User;
+use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tokio::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
@@ -28,7 +28,7 @@ pub struct CreateUser {
 
 impl CreateUser {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         name: String,
         uid: u32,
         groupname: String,
@@ -87,7 +87,6 @@ impl CreateUser {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_user")]
 impl Action for CreateUser {
     fn action_tag() -> ActionTag {
@@ -121,7 +120,7 @@ impl Action for CreateUser {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             name,
             uid,
@@ -132,15 +131,12 @@ impl Action for CreateUser {
 
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
-                create_user_macos(name, *uid, *gid)
-                    .await
-                    .map_err(Self::error)?;
+                create_user_macos(name, *uid, *gid).map_err(Self::error)?;
             },
             _ => {
                 if which::which("useradd").is_ok() {
                     execute_command(
                         Command::new("useradd")
-                            .process_group(0)
                             .args([
                                 "--home-dir",
                                 "/var/empty",
@@ -162,12 +158,10 @@ impl Action for CreateUser {
                             ])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("adduser").is_ok() {
                     execute_command(
                         Command::new("adduser")
-                            .process_group(0)
                             .args([
                                 "--home",
                                 "/var/empty",
@@ -186,7 +180,6 @@ impl Action for CreateUser {
                             ])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(ActionErrorKind::MissingUserCreationCommand));
@@ -210,29 +203,25 @@ impl Action for CreateUser {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
-                delete_user_macos(&self.name).await.map_err(Self::error)?;
+                delete_user_macos(&self.name).map_err(Self::error)?;
             },
             _ => {
                 if which::which("userdel").is_ok() {
                     execute_command(
                         Command::new("userdel")
-                            .process_group(0)
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("deluser").is_ok() {
                     execute_command(
                         Command::new("deluser")
-                            .process_group(0)
                             .arg(&self.name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(ActionErrorKind::MissingUserDeletionCommand));
@@ -245,18 +234,16 @@ impl Action for CreateUser {
 }
 
 #[tracing::instrument]
-async fn execute_dscl_retry_on_specific_errors(dscl_args: &[&str]) -> Result<(), ActionErrorKind> {
+fn execute_dscl_retry_on_specific_errors(dscl_args: &[&str]) -> Result<(), ActionErrorKind> {
     let mut retry_tokens: usize = 10;
     loop {
         let mut command = Command::new("/usr/bin/dscl");
-        command.process_group(0);
         command.args(dscl_args);
         command.stdin(std::process::Stdio::null());
-        tracing::debug!(%retry_tokens, command = ?command.as_std(), "Waiting for user create/update to succeed");
+        tracing::debug!(%retry_tokens, command = ?command, "Waiting for user create/update to succeed");
 
         let output = command
             .output()
-            .await
             .map_err(|e| ActionErrorKind::command(&command, e))?;
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -285,15 +272,15 @@ async fn execute_dscl_retry_on_specific_errors(dscl_args: &[&str]) -> Result<(),
             retry_tokens = retry_tokens.saturating_sub(1);
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-async fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionErrorKind> {
-    execute_dscl_retry_on_specific_errors(&[".", "-create", &format!("/Users/{name}")]).await?;
+fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionErrorKind> {
+    execute_dscl_retry_on_specific_errors(&[".", "-create", &format!("/Users/{name}")])?;
 
     execute_dscl_retry_on_specific_errors(&[
         ".",
@@ -301,40 +288,35 @@ async fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionE
         &format!("/Users/{name}"),
         "UniqueID",
         &format!("{uid}"),
-    ])
-    .await?;
+    ])?;
     execute_dscl_retry_on_specific_errors(&[
         ".",
         "-create",
         &format!("/Users/{name}"),
         "PrimaryGroupID",
         &format!("{gid}"),
-    ])
-    .await?;
+    ])?;
     execute_dscl_retry_on_specific_errors(&[
         ".",
         "-create",
         &format!("/Users/{name}"),
         "NFSHomeDirectory",
         "/var/empty",
-    ])
-    .await?;
+    ])?;
     execute_dscl_retry_on_specific_errors(&[
         ".",
         "-create",
         &format!("/Users/{name}"),
         "UserShell",
         "/sbin/nologin",
-    ])
-    .await?;
+    ])?;
     execute_dscl_retry_on_specific_errors(&[
         ".",
         "-create",
         &format!("/Users/{name}"),
         "RealName",
         name,
-    ])
-    .await?;
+    ])?;
     execute_dscl_retry_on_specific_errors(&[
         ".",
         "-create",
@@ -342,7 +324,7 @@ async fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionE
         "IsHidden",
         "1",
     ])
-    .await
+
     .or_else(|e| {
         if let ActionErrorKind::CommandOutput { ref output, .. } = e {
             if output.status.signal() == Some(9) {
@@ -360,19 +342,17 @@ async fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionE
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn delete_user_macos(name: &str) -> Result<(), ActionErrorKind> {
+pub fn delete_user_macos(name: &str) -> Result<(), ActionErrorKind> {
     // MacOS is a "Special" case
     // It's only possible to delete users under certain conditions.
     // Documentation on https://it.megocollector.com/macos/cant-delete-a-macos-user-with-dscl-resolution/ and http://www.aixperts.co.uk/?p=214 suggested it was a secure token
     // That is correct, however it's a bit more nuanced. It appears to be that a user must be graphically logged in for some other user on the system to be deleted.
     let mut command = Command::new("/usr/bin/dscl");
-    command.process_group(0);
     command.args([".", "-delete", &format!("/Users/{}", name)]);
     command.stdin(std::process::Stdio::null());
 
     let output = command
         .output()
-        .await
         .map_err(|e| ActionErrorKind::command(&command, e))?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     match output.status.code() {

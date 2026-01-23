@@ -6,13 +6,10 @@ use crate::{
 };
 use rand::Rng;
 use std::{
-    io::SeekFrom,
-    os::{unix::fs::MetadataExt, unix::prelude::PermissionsExt},
-    path::{Path, PathBuf},
-};
-use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    io::{Read, Seek, SeekFrom, Write},
+    os::{unix::fs::MetadataExt, unix::fs::OpenOptionsExt, unix::prelude::PermissionsExt},
+    path::{Path, PathBuf},
 };
 use tracing::{span, Span};
 
@@ -41,7 +38,7 @@ pub struct CreateOrInsertIntoFile {
 
 impl CreateOrInsertIntoFile {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         path: impl AsRef<Path>,
         user: impl Into<Option<String>>,
         group: impl Into<Option<String>>,
@@ -64,13 +61,11 @@ impl CreateOrInsertIntoFile {
         if this.path.exists() {
             // If the path exists, perhaps we can just skip this
             let mut file = File::open(&this.path)
-                .await
                 .map_err(|e| ActionErrorKind::Open(this.path.clone(), e))
                 .map_err(Self::error)?;
 
             let metadata = file
                 .metadata()
-                .await
                 .map_err(|e| ActionErrorKind::GettingMetadata(this.path.clone(), e))
                 .map_err(Self::error)?;
 
@@ -133,7 +128,6 @@ impl CreateOrInsertIntoFile {
             // Does it have the right content?
             let mut discovered_buf = String::new();
             file.read_to_string(&mut discovered_buf)
-                .await
                 .map_err(|e| ActionErrorKind::Read(this.path.clone(), e))
                 .map_err(Self::error)?;
 
@@ -149,7 +143,6 @@ impl CreateOrInsertIntoFile {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_or_insert_into_file")]
 impl Action for CreateOrInsertIntoFile {
     fn action_tag() -> ActionTag {
@@ -183,7 +176,7 @@ impl Action for CreateOrInsertIntoFile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             path,
             user,
@@ -193,7 +186,7 @@ impl Action for CreateOrInsertIntoFile {
             position,
         } = self;
 
-        let mut orig_file = match OpenOptions::new().read(true).open(&path).await {
+        let mut orig_file = match OpenOptions::new().read(true).open(&path) {
             Ok(f) => Some(f),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(Self::error(ActionErrorKind::Open(path.to_owned(), e))),
@@ -204,8 +197,7 @@ impl Action for CreateOrInsertIntoFile {
         // atomically
         let parent_dir = path.parent().expect("File must be in a directory");
         if !parent_dir.exists() {
-            tokio::fs::create_dir_all(&parent_dir)
-                .await
+            std::fs::create_dir_all(&parent_dir)
                 .map_err(|e| ActionErrorKind::CreateDirectory(parent_dir.to_owned(), e))
                 .map_err(Self::error)?;
         }
@@ -226,15 +218,14 @@ impl Action for CreateOrInsertIntoFile {
             // the appropriate user)
             .mode(0o600)
             .open(&temp_file_path)
-            .await
+
             .map_err(|e| {
                 ActionErrorKind::Open(temp_file_path.clone(), e)
             }).map_err(Self::error)?;
 
         if *position == Position::End {
             if let Some(ref mut orig_file) = orig_file {
-                tokio::io::copy(orig_file, &mut temp_file)
-                    .await
+                std::io::copy(orig_file, &mut temp_file)
                     .map_err(|e| {
                         ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e)
                     })
@@ -244,14 +235,12 @@ impl Action for CreateOrInsertIntoFile {
 
         temp_file
             .write_all(buf.as_bytes())
-            .await
             .map_err(|e| ActionErrorKind::Write(temp_file_path.clone(), e))
             .map_err(Self::error)?;
 
         if *position == Position::Beginning {
             if let Some(ref mut orig_file) = orig_file {
-                tokio::io::copy(orig_file, &mut temp_file)
-                    .await
+                std::io::copy(orig_file, &mut temp_file)
                     .map_err(|e| {
                         ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e)
                     })
@@ -292,29 +281,25 @@ impl Action for CreateOrInsertIntoFile {
             .map_err(Self::error)?;
 
         if let Some(mode) = mode {
-            tokio::fs::set_permissions(&temp_file_path, PermissionsExt::from_mode(*mode))
-                .await
+            std::fs::set_permissions(&temp_file_path, PermissionsExt::from_mode(*mode))
                 .map_err(|e| ActionErrorKind::SetPermissions(*mode, path.to_owned(), e))
                 .map_err(Self::error)?;
         } else if let Some(original_file) = orig_file {
             let original_file_mode = original_file
                 .metadata()
-                .await
                 .map_err(|e| ActionErrorKind::GettingMetadata(path.to_path_buf(), e))
                 .map_err(Self::error)?
                 .permissions()
                 .mode();
-            tokio::fs::set_permissions(
+            std::fs::set_permissions(
                 &temp_file_path,
                 PermissionsExt::from_mode(original_file_mode),
             )
-            .await
             .map_err(|e| ActionErrorKind::SetPermissions(original_file_mode, path.to_owned(), e))
             .map_err(Self::error)?;
         }
 
-        tokio::fs::rename(&temp_file_path, &path)
-            .await
+        std::fs::rename(&temp_file_path, &path)
             .map_err(|e| ActionErrorKind::Rename(path.to_owned(), temp_file_path.to_owned(), e))
             .map_err(Self::error)?;
 
@@ -340,7 +325,7 @@ impl Action for CreateOrInsertIntoFile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let Self {
             path,
             user: _,
@@ -359,13 +344,11 @@ impl Action for CreateOrInsertIntoFile {
             .write(true)
             .read(true)
             .open(&path)
-            .await
             .map_err(|e| ActionErrorKind::Open(path.to_owned(), e))
             .map_err(Self::error)?;
 
         let mut file_contents = String::default();
         file.read_to_string(&mut file_contents)
-            .await
             .map_err(|e| ActionErrorKind::Read(path.to_owned(), e))
             .map_err(Self::error)?;
 
@@ -376,24 +359,19 @@ impl Action for CreateOrInsertIntoFile {
 
         if file_contents.is_empty() {
             crate::util::remove_file(path, OnMissing::Ignore)
-                .await
                 .map_err(|e| ActionErrorKind::Remove(path.to_owned(), e))
                 .map_err(Self::error)?;
         } else {
             file.seek(SeekFrom::Start(0))
-                .await
                 .map_err(|e| ActionErrorKind::Seek(path.to_owned(), e))
                 .map_err(Self::error)?;
             file.set_len(0)
-                .await
                 .map_err(|e| ActionErrorKind::Truncate(path.to_owned(), e))
                 .map_err(Self::error)?;
             file.write_all(file_contents.as_bytes())
-                .await
                 .map_err(|e| ActionErrorKind::Write(path.to_owned(), e))
                 .map_err(Self::error)?;
             file.flush()
-                .await
                 .map_err(|e| ActionErrorKind::Flush(path.to_owned(), e))
                 .map_err(Self::error)?;
         }
@@ -405,10 +383,10 @@ impl Action for CreateOrInsertIntoFile {
 mod test {
     use super::*;
     use color_eyre::eyre::eyre;
-    use tokio::fs::{read_to_string, write};
+    use std::fs::{read_to_string, write};
 
-    #[tokio::test]
-    async fn creates_and_deletes_file() -> eyre::Result<()> {
+    #[test]
+    fn creates_and_deletes_file() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("creates_and_deletes_file");
         let mut action = CreateOrInsertIntoFile::plan(
@@ -418,27 +396,24 @@ mod test {
             None,
             "Test".into(),
             Position::Beginning,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn edits_and_reverts_file() -> eyre::Result<()> {
+    #[test]
+    fn edits_and_reverts_file() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("edits_and_reverts_file");
 
         let test_content = "Some other content";
-        tokio::fs::write(&test_file, test_content)
-            .await
-            .expect("Could not write to test temp file");
+        std::fs::write(&test_file, test_content).expect("Could not write to test temp file");
 
         let mut action = CreateOrInsertIntoFile::plan(
             test_file.clone(),
@@ -447,36 +422,34 @@ mod test {
             None,
             "Test".into(),
             Position::Beginning,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(test_file.exists(), "File should have not been deleted");
 
-        let read_content = tokio::fs::read_to_string(test_file)
-            .await
-            .expect("Could not read test temp file");
+        let read_content =
+            std::fs::read_to_string(test_file).expect("Could not read test temp file");
 
         assert_eq!(test_content, read_content);
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_existing_containing_exact_contents_and_reverts_it() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_existing_containing_exact_contents_and_reverts_it() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir
             .path()
             .join("recognizes_existing_containing_exact_contents_and_reverts_it");
 
         let expected_content = "Some expected content";
-        write(test_file.as_path(), expected_content).await?;
+        write(test_file.as_path(), expected_content)?;
 
         let added_content = "\nSome more expected content";
-        write(test_file.as_path(), added_content).await?;
+        write(test_file.as_path(), added_content)?;
 
         // We test all `Position` options
         let positions = [Position::Beginning, Position::End];
@@ -488,23 +461,22 @@ mod test {
                 None,
                 expected_content.into(),
                 position,
-            )
-            .await?;
+            )?;
 
-            action.try_execute().await?;
+            action.try_execute()?;
 
-            action.try_revert().await?;
+            action.try_revert()?;
 
             assert!(test_file.exists(), "File should have not been deleted");
-            let after_revert_content = read_to_string(&test_file).await?;
+            let after_revert_content = read_to_string(&test_file)?;
             assert_eq!(after_revert_content, added_content);
         }
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_wrong_mode_and_does_not_error() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_wrong_mode_and_does_not_error() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir
             .path()
@@ -512,9 +484,8 @@ mod test {
         let initial_mode = 0o777;
         let expected_mode = 0o666;
 
-        write(test_file.as_path(), "Some content").await?;
-        tokio::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))
-            .await?;
+        write(test_file.as_path(), "Some content")?;
+        std::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))?;
 
         let mut action = CreateOrInsertIntoFile::plan(
             test_file.clone(),
@@ -523,27 +494,25 @@ mod test {
             Some(expected_mode),
             "Some different content".into(),
             Position::End,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(test_file.exists(), "File should have not been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn recognizes_correct_mode() -> eyre::Result<()> {
+    #[test]
+    fn recognizes_correct_mode() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let test_file = temp_dir.path().join("recognizes_correct_mode");
         let initial_mode = 0o777;
 
-        write(test_file.as_path(), "Some content").await?;
-        tokio::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))
-            .await?;
+        write(test_file.as_path(), "Some content")?;
+        std::fs::set_permissions(test_file.as_path(), PermissionsExt::from_mode(initial_mode))?;
 
         let mut action = CreateOrInsertIntoFile::plan(
             test_file.clone(),
@@ -552,20 +521,19 @@ mod test {
             Some(initial_mode),
             "Some content".into(),
             Position::End,
-        )
-        .await?;
+        )?;
 
-        action.try_execute().await?;
+        action.try_execute()?;
 
-        action.try_revert().await?;
+        action.try_revert()?;
 
         assert!(!test_file.exists(), "File should have been deleted");
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn errors_on_dir() -> eyre::Result<()> {
+    #[test]
+    fn errors_on_dir() -> eyre::Result<()> {
         let temp_dir = tempfile::tempdir()?;
 
         match CreateOrInsertIntoFile::plan(
@@ -575,9 +543,7 @@ mod test {
             None,
             "Some different content".into(),
             Position::End,
-        )
-        .await
-        {
+        ) {
             Err(err) => match err.kind() {
                 ActionErrorKind::PathWasNotFile(path) => assert_eq!(path, temp_dir.path()),
                 _ => {

@@ -6,8 +6,7 @@ use crate::planner::ShellProfileLocations;
 
 use nix::unistd::User;
 use std::path::{Path, PathBuf};
-use tokio::task::JoinSet;
-use tracing::{span, Instrument, Span};
+use tracing::{span, Span};
 
 const PROFILE_NIX_FILE_SHELL: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh";
 const PROFILE_NIX_FILE_FISH: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.fish";
@@ -25,9 +24,7 @@ pub struct ConfigureShellProfile {
 
 impl ConfigureShellProfile {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
-        locations: ShellProfileLocations,
-    ) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(locations: ShellProfileLocations) -> Result<StatefulAction<Self>, ActionError> {
         let mut create_or_insert_files = Vec::default();
         let mut create_directories = Vec::default();
 
@@ -50,7 +47,6 @@ impl ConfigureShellProfile {
                     if !parent.exists() {
                         create_directories.push(
                             CreateDirectory::plan(parent, None, None, 0o0755, false)
-                                .await
                                 .map_err(Self::error)?,
                         );
                     }
@@ -64,7 +60,6 @@ impl ConfigureShellProfile {
                             shell_buf.to_string(),
                             create_or_insert_into_file::Position::Beginning,
                         )
-                        .await
                         .map_err(Self::error)?,
                     );
                 }
@@ -96,23 +91,23 @@ impl ConfigureShellProfile {
             // Some tools (eg `nix-darwin`) create symlinks to these files, don't write to them if that's the case.
             if !profile_target.is_symlink() {
                 if let Some(conf_d) = profile_target.parent() {
-                    create_directories.push(
-                        CreateDirectory::plan(conf_d.to_path_buf(), None, None, 0o755, false)
-                            .await?,
-                    );
+                    create_directories.push(CreateDirectory::plan(
+                        conf_d.to_path_buf(),
+                        None,
+                        None,
+                        0o755,
+                        false,
+                    )?);
                 }
 
-                create_or_insert_files.push(
-                    CreateOrInsertIntoFile::plan(
-                        profile_target,
-                        None,
-                        None,
-                        0o644,
-                        fish_buf.to_string(),
-                        create_or_insert_into_file::Position::Beginning,
-                    )
-                    .await?,
-                );
+                create_or_insert_files.push(CreateOrInsertIntoFile::plan(
+                    profile_target,
+                    None,
+                    None,
+                    0o644,
+                    fish_buf.to_string(),
+                    create_or_insert_into_file::Position::Beginning,
+                )?);
             }
         }
         for fish_prefix in &locations.fish.vendor_confd_prefixes {
@@ -127,22 +122,23 @@ impl ConfigureShellProfile {
             profile_target.push(locations.fish.vendor_confd_suffix.clone());
 
             if let Some(conf_d) = profile_target.parent() {
-                create_directories.push(
-                    CreateDirectory::plan(conf_d.to_path_buf(), None, None, 0o755, false).await?,
-                );
+                create_directories.push(CreateDirectory::plan(
+                    conf_d.to_path_buf(),
+                    None,
+                    None,
+                    0o755,
+                    false,
+                )?);
             }
 
-            create_or_insert_files.push(
-                CreateOrInsertIntoFile::plan(
-                    profile_target,
-                    None,
-                    None,
-                    0o644,
-                    fish_buf.to_string(),
-                    create_or_insert_into_file::Position::Beginning,
-                )
-                .await?,
-            );
+            create_or_insert_files.push(CreateOrInsertIntoFile::plan(
+                profile_target,
+                None,
+                None,
+                0o644,
+                fish_buf.to_string(),
+                create_or_insert_into_file::Position::Beginning,
+            )?);
         }
 
         // If the `$GITHUB_PATH` environment exists, we're almost certainly running on Github
@@ -157,19 +153,16 @@ impl ConfigureShellProfile {
                 let path = format!("/Users/{}/.nix-profile/bin\n", runner.name);
                 buf += &path;
             }
-            create_or_insert_files.push(
-                CreateOrInsertIntoFile::plan(
-                    &github_path,
-                    None,
-                    None,
-                    // We want the `nix-installer-action` to not error if it writes here.
-                    // Prior to `v5` this was done in this crate, in `v5` and later, this is done in the action.
-                    0o777,
-                    buf,
-                    create_or_insert_into_file::Position::End,
-                )
-                .await?,
-            );
+            create_or_insert_files.push(CreateOrInsertIntoFile::plan(
+                &github_path,
+                None,
+                None,
+                // We want the `nix-installer-action` to not error if it writes here.
+                // Prior to `v5` this was done in this crate, in `v5` and later, this is done in the action.
+                0o777,
+                buf,
+                create_or_insert_into_file::Position::End,
+            )?);
         }
 
         Ok(Self {
@@ -181,7 +174,6 @@ impl ConfigureShellProfile {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "configure_shell_profile")]
 impl Action for ConfigureShellProfile {
     fn action_tag() -> ActionTag {
@@ -203,46 +195,24 @@ impl Action for ConfigureShellProfile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         for create_directory in &mut self.create_directories {
-            create_directory.try_execute().await?;
+            create_directory.try_execute()?;
         }
 
-        let mut set = JoinSet::new();
         let mut errors = vec![];
 
-        for (idx, create_or_insert_into_file) in
-            self.create_or_insert_into_files.iter_mut().enumerate()
-        {
-            let span = tracing::Span::current().clone();
-            let mut create_or_insert_into_file_clone = create_or_insert_into_file.clone();
-            let _abort_handle = set.spawn(async move {
-                create_or_insert_into_file_clone
-                    .try_execute()
-                    .instrument(span)
-                    .await
-                    .map_err(Self::error)?;
-                Result::<_, ActionError>::Ok((idx, create_or_insert_into_file_clone))
-            });
-        }
-
-        while let Some(result) = set.join_next().await {
-            match result {
-                Ok(Ok((idx, create_or_insert_into_file))) => {
-                    self.create_or_insert_into_files[idx] = create_or_insert_into_file
-                },
-                Ok(Err(e)) => errors.push(e),
-                Err(e) => return Err(Self::error(e))?,
-            };
+        for create_or_insert_into_file in &mut self.create_or_insert_into_files {
+            if let Err(e) = create_or_insert_into_file.try_execute() {
+                errors.push(e);
+            }
         }
 
         if !errors.is_empty() {
             if errors.len() == 1 {
-                return Err(Self::error(errors.into_iter().next().unwrap()))?;
+                return Err(errors.into_iter().next().unwrap());
             } else {
-                return Err(Self::error(ActionErrorKind::MultipleChildren(
-                    errors.into_iter().collect(),
-                )));
+                return Err(Self::error(ActionErrorKind::MultipleChildren(errors)));
             }
         }
 
@@ -257,33 +227,17 @@ impl Action for ConfigureShellProfile {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
-        let mut set = JoinSet::new();
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
-        for (idx, create_or_insert_into_file) in
-            self.create_or_insert_into_files.iter_mut().enumerate()
-        {
-            let mut create_or_insert_file_clone = create_or_insert_into_file.clone();
-            let _abort_handle = set.spawn(async move {
-                create_or_insert_file_clone.try_revert().await?;
-                Result::<_, _>::Ok((idx, create_or_insert_file_clone))
-            });
-        }
-
-        while let Some(result) = set.join_next().await {
-            match result {
-                Ok(Ok((idx, create_or_insert_into_file))) => {
-                    self.create_or_insert_into_files[idx] = create_or_insert_into_file
-                },
-                Ok(Err(e)) => errors.push(e),
-                // This is quite rare and generally a very bad sign.
-                Err(e) => return Err(e).map_err(|e| Self::error(ActionErrorKind::from(e)))?,
-            };
+        for create_or_insert_into_file in &mut self.create_or_insert_into_files {
+            if let Err(e) = create_or_insert_into_file.try_revert() {
+                errors.push(e);
+            }
         }
 
         for create_directory in self.create_directories.iter_mut() {
-            if let Err(err) = create_directory.try_revert().await {
+            if let Err(err) = create_directory.try_revert() {
                 errors.push(err);
             }
         }

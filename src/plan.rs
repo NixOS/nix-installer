@@ -1,6 +1,10 @@
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use crate::{
@@ -10,9 +14,16 @@ use crate::{
 };
 use owo_colors::OwoColorize;
 use semver::{Version, VersionReq};
-use tokio::sync::broadcast::Receiver;
 
 pub const RECEIPT_LOCATION: &str = "/nix/receipt.json";
+
+/// A cancellation flag that can be shared across threads
+pub type CancelSignal = Arc<AtomicBool>;
+
+/// Create a new cancel signal
+pub fn cancel_signal() -> CancelSignal {
+    Arc::new(AtomicBool::new(false))
+}
 
 /**
 A set of [`Action`]s, along with some metadata, which can be carried out to drive an install or
@@ -28,11 +39,11 @@ pub struct InstallPlan {
 }
 
 impl InstallPlan {
-    pub async fn default() -> Result<Self, NixInstallerError> {
-        let planner = BuiltinPlanner::default().await?;
+    pub fn default() -> Result<Self, NixInstallerError> {
+        let planner = BuiltinPlanner::default()?;
 
         let planner = planner.boxed();
-        let actions = planner.plan().await?;
+        let actions = planner.plan()?;
 
         Ok(Self {
             planner,
@@ -41,16 +52,16 @@ impl InstallPlan {
         })
     }
 
-    pub async fn plan<P>(planner: P) -> Result<Self, NixInstallerError>
+    pub fn plan<P>(planner: P) -> Result<Self, NixInstallerError>
     where
         P: Planner + 'static,
     {
-        planner.platform_check().await?;
+        planner.platform_check()?;
 
         // Some Action `plan` calls may fail if we don't do these checks
-        planner.pre_install_check().await?;
+        planner.pre_install_check()?;
 
-        let actions = planner.plan().await?;
+        let actions = planner.plan()?;
         Ok(Self {
             planner: planner.boxed(),
             actions,
@@ -58,20 +69,20 @@ impl InstallPlan {
         })
     }
 
-    pub async fn pre_uninstall_check(&self) -> Result<(), NixInstallerError> {
-        self.planner.platform_check().await?;
-        self.planner.pre_uninstall_check().await?;
+    pub fn pre_uninstall_check(&self) -> Result<(), NixInstallerError> {
+        self.planner.platform_check()?;
+        self.planner.pre_uninstall_check()?;
         Ok(())
     }
 
-    pub async fn pre_install_check(&self) -> Result<(), NixInstallerError> {
-        self.planner.platform_check().await?;
-        self.planner.pre_install_check().await?;
+    pub fn pre_install_check(&self) -> Result<(), NixInstallerError> {
+        self.planner.platform_check()?;
+        self.planner.pre_install_check()?;
         Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn describe_install(&self, explain: bool) -> Result<String, NixInstallerError> {
+    pub fn describe_install(&self, explain: bool) -> Result<String, NixInstallerError> {
         let Self {
             planner,
             actions,
@@ -84,7 +95,7 @@ impl InstallPlan {
             planner.settings()?
         } else {
             // Otherwise, only list user-configured settings
-            planner.configured_settings().await?
+            planner.configured_settings()?
         };
         let mut plan_settings = plan_settings
             .into_iter()
@@ -145,25 +156,22 @@ impl InstallPlan {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn install(
+    pub fn install(
         &mut self,
-        cancel_channel: impl Into<Option<Receiver<()>>>,
+        cancel_signal: Option<CancelSignal>,
     ) -> Result<(), NixInstallerError> {
         self.check_compatible()?;
-        self.pre_install_check().await?;
+        self.pre_install_check()?;
 
         let Self { actions, .. } = self;
-        let mut cancel_channel = cancel_channel.into();
 
         // This is **deliberately sequential**.
         // Actions which are parallelizable are represented by "group actions" like CreateUsers
         // The plan itself represents the concept of the sequence of stages.
         for action in actions {
-            if let Some(ref mut cancel_channel) = cancel_channel {
-                if cancel_channel.try_recv()
-                    != Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-                {
-                    if let Err(err) = self.write_receipt().await {
+            if let Some(ref signal) = cancel_signal {
+                if signal.load(Ordering::Relaxed) {
+                    if let Err(err) = self.write_receipt() {
                         tracing::error!("Error saving receipt: {:?}", err);
                     }
 
@@ -172,8 +180,8 @@ impl InstallPlan {
             }
 
             tracing::info!("Step: {}", action.tracing_synopsis());
-            if let Err(err) = action.try_execute().await {
-                if let Err(err) = self.write_receipt().await {
+            if let Err(err) = action.try_execute() {
+                if let Err(err) = self.write_receipt() {
                     tracing::error!("Error saving receipt: {:?}", err);
                 }
 
@@ -183,12 +191,9 @@ impl InstallPlan {
             }
         }
 
-        self.write_receipt().await?;
+        self.write_receipt()?;
 
-        if let Err(err) = crate::self_test::self_test()
-            .await
-            .map_err(NixInstallerError::SelfTest)
-        {
+        if let Err(err) = crate::self_test::self_test().map_err(NixInstallerError::SelfTest) {
             tracing::warn!("{err:?}")
         }
 
@@ -196,7 +201,7 @@ impl InstallPlan {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn describe_uninstall(&self, explain: bool) -> Result<String, NixInstallerError> {
+    pub fn describe_uninstall(&self, explain: bool) -> Result<String, NixInstallerError> {
         let Self {
             version,
             planner,
@@ -209,7 +214,7 @@ impl InstallPlan {
             planner.settings()?
         } else {
             // Otherwise, only list user-configured settings
-            planner.configured_settings().await?
+            planner.configured_settings()?
         };
         let mut plan_settings = plan_settings
             .into_iter()
@@ -272,26 +277,23 @@ impl InstallPlan {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn uninstall(
+    pub fn uninstall(
         &mut self,
-        cancel_channel: impl Into<Option<Receiver<()>>>,
+        cancel_signal: Option<CancelSignal>,
     ) -> Result<(), NixInstallerError> {
         self.check_compatible()?;
-        self.pre_uninstall_check().await?;
+        self.pre_uninstall_check()?;
 
         let Self { actions, .. } = self;
-        let mut cancel_channel = cancel_channel.into();
         let mut errors = vec![];
 
         // This is **deliberately sequential**.
         // Actions which are parallelizable are represented by "group actions" like CreateUsers
         // The plan itself represents the concept of the sequence of stages.
         for action in actions.iter_mut().rev() {
-            if let Some(ref mut cancel_channel) = cancel_channel {
-                if cancel_channel.try_recv()
-                    != Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-                {
-                    if let Err(err) = self.write_receipt().await {
+            if let Some(ref signal) = cancel_signal {
+                if signal.load(Ordering::Relaxed) {
+                    if let Err(err) = self.write_receipt() {
                         tracing::error!("Error saving receipt: {:?}", err);
                     }
 
@@ -300,7 +302,7 @@ impl InstallPlan {
             }
 
             tracing::info!("Revert: {}", action.tracing_synopsis());
-            if let Err(errs) = action.try_revert().await {
+            if let Err(errs) = action.try_revert() {
                 errors.push(errs);
             }
         }
@@ -328,15 +330,15 @@ impl InstallPlan {
         }
     }
 
-    pub(crate) async fn write_receipt(&self) -> Result<(), NixInstallerError> {
+    pub(crate) fn write_receipt(&self) -> Result<(), NixInstallerError> {
         let install_receipt_path = PathBuf::from(RECEIPT_LOCATION);
-        write_receipt(self, &install_receipt_path).await?;
+        write_receipt(self, &install_receipt_path)?;
 
         Ok(())
     }
 }
 
-pub(crate) async fn write_receipt(
+pub(crate) fn write_receipt(
     plan: &impl serde::Serialize,
     install_receipt_path: &Path,
 ) -> Result<(), NixInstallerError> {
@@ -348,14 +350,11 @@ pub(crate) async fn write_receipt(
     let self_json =
         serde_json::to_string_pretty(plan).map_err(NixInstallerError::SerializingReceipt)?;
 
-    tokio::fs::create_dir_all("/nix")
-        .await
+    std::fs::create_dir_all("/nix")
         .map_err(|e| NixInstallerError::RecordingReceipt(PathBuf::from("/nix"), e))?;
-    tokio::fs::write(&install_receipt_path_tmp, format!("{self_json}\n"))
-        .await
+    std::fs::write(&install_receipt_path_tmp, format!("{self_json}\n"))
         .map_err(|e| NixInstallerError::RecordingReceipt(install_receipt_path_tmp.clone(), e))?;
-    tokio::fs::rename(&install_receipt_path_tmp, &install_receipt_path)
-        .await
+    std::fs::rename(&install_receipt_path_tmp, &install_receipt_path)
         .map_err(|e| NixInstallerError::RecordingReceipt(install_receipt_path.to_path_buf(), e))?;
 
     Ok(())
@@ -374,9 +373,9 @@ mod test {
 
     use crate::{planner::BuiltinPlanner, InstallPlan, NixInstallerError};
 
-    #[tokio::test]
-    async fn ensure_version_allows_compatible() -> Result<(), NixInstallerError> {
-        let planner = BuiltinPlanner::default().await?;
+    #[test]
+    fn ensure_version_allows_compatible() -> Result<(), NixInstallerError> {
+        let planner = BuiltinPlanner::default()?;
         let good_version = Version::parse(env!("CARGO_PKG_VERSION"))?;
         let value = serde_json::json!({
             "planner": planner.boxed(),
@@ -388,9 +387,9 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn ensure_version_denies_incompatible() -> Result<(), NixInstallerError> {
-        let planner = BuiltinPlanner::default().await?;
+    #[test]
+    fn ensure_version_denies_incompatible() -> Result<(), NixInstallerError> {
+        let planner = BuiltinPlanner::default()?;
         let bad_version = Version::parse("9999999999999.9999999999.99999999")?;
         let value = serde_json::json!({
             "planner": planner.boxed(),

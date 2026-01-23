@@ -1,8 +1,8 @@
 use std::process::Stdio;
 
 use nix::unistd::User;
+use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tokio::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind};
@@ -24,7 +24,7 @@ pub struct AddUserToGroup {
 
 impl AddUserToGroup {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
+    pub fn plan(
         name: String,
         uid: u32,
         groupname: String,
@@ -76,16 +76,14 @@ impl AddUserToGroup {
             match OperatingSystem::host() {
                 OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                     let mut command = Command::new("/usr/sbin/dseditgroup");
-                    command.process_group(0);
                     command.args(["-o", "checkmember", "-m"]);
                     command.arg(&this.name);
                     command.arg(&this.groupname);
                     command.stdout(Stdio::piped());
                     command.stderr(Stdio::piped());
-                    tracing::trace!("Executing `{:?}`", command.as_std());
+                    tracing::trace!("Executing `{:?}`", command);
                     let output = command
                         .output()
-                        .await
                         .map_err(|e| ActionErrorKind::command(&command, e))
                         .map_err(Self::error)?;
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -132,11 +130,9 @@ impl AddUserToGroup {
                 _ => {
                     let output = execute_command(
                         Command::new("groups")
-                            .process_group(0)
                             .arg(&this.name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                     let output_str = String::from_utf8(output.stdout).map_err(Self::error)?;
                     let user_in_group = output_str.split(' ').any(|v| v == this.groupname);
@@ -157,7 +153,6 @@ impl AddUserToGroup {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "add_user_to_group")]
 impl Action for AddUserToGroup {
     fn action_tag() -> crate::action::ActionTag {
@@ -191,13 +186,12 @@ impl Action for AddUserToGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         use target_lexicon::OperatingSystem;
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                 execute_command(
                     Command::new("/usr/bin/dscl")
-                        .process_group(0)
                         .args([
                             ".",
                             "-append",
@@ -207,39 +201,32 @@ impl Action for AddUserToGroup {
                         .arg(&self.name)
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
                 execute_command(
                     Command::new("/usr/sbin/dseditgroup")
-                        .process_group(0)
                         .args(["-o", "edit"])
                         .arg("-a")
                         .arg(&self.name)
                         .arg(&self.groupname)
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
             _ => {
                 if which::which("gpasswd").is_ok() {
                     execute_command(
                         Command::new("gpasswd")
-                            .process_group(0)
                             .args(["-a"])
                             .args([&self.name, &self.groupname])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("addgroup").is_ok() {
                     execute_command(
                         Command::new("addgroup")
-                            .process_group(0)
                             .args([&self.name, &self.groupname])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(Self::error(
@@ -265,7 +252,7 @@ impl Action for AddUserToGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let Self {
             name,
             uid: _,
@@ -278,33 +265,27 @@ impl Action for AddUserToGroup {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                 execute_command(
                     Command::new("/usr/bin/dscl")
-                        .process_group(0)
                         .args([".", "-delete", &format!("/Groups/{groupname}"), "users"])
                         .arg(name)
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
             _ => {
                 if which::which("gpasswd").is_ok() {
                     execute_command(
                         Command::new("gpasswd")
-                            .process_group(0)
                             .args(["-d"])
                             .args([&name.to_string(), &groupname.to_string()])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("delgroup").is_ok() {
                     execute_command(
                         Command::new("delgroup")
-                            .process_group(0)
                             .args([name, groupname])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(

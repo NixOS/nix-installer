@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
@@ -20,7 +20,7 @@ pub struct EnableOwnership {
 
 impl EnableOwnership {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(path: impl AsRef<Path>) -> Result<StatefulAction<Self>, ActionError> {
         Ok(Self {
             path: path.as_ref().to_path_buf(),
         }
@@ -28,7 +28,6 @@ impl EnableOwnership {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "enable_ownership")]
 impl Action for EnableOwnership {
     fn action_tag() -> ActionTag {
@@ -51,11 +50,9 @@ impl Action for EnableOwnership {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let should_enable_ownership = {
-            let the_plist = DiskUtilInfoOutput::for_volume_path(&self.path)
-                .await
-                .map_err(Self::error)?;
+            let the_plist = DiskUtilInfoOutput::for_volume_path(&self.path).map_err(Self::error)?;
 
             !the_plist.global_permissions_enabled
         };
@@ -63,12 +60,10 @@ impl Action for EnableOwnership {
         if should_enable_ownership {
             execute_command(
                 Command::new("/usr/sbin/diskutil")
-                    .process_group(0)
                     .arg("enableOwnership")
                     .arg(&self.path)
                     .stdin(std::process::Stdio::null()),
             )
-            .await
             .map_err(Self::error)?;
         }
 
@@ -80,7 +75,7 @@ impl Action for EnableOwnership {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         // noop
         Ok(())
     }

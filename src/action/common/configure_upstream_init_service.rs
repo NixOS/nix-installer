@@ -29,10 +29,7 @@ pub struct ConfigureUpstreamInitService {
 
 impl ConfigureUpstreamInitService {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(
-        init: InitSystem,
-        start_daemon: bool,
-    ) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(init: InitSystem, start_daemon: bool) -> Result<StatefulAction<Self>, ActionError> {
         let service_src: Option<UnitSrc> = match init {
             InitSystem::Launchd => Some(UnitSrc::Path(DARWIN_NIX_DAEMON_SOURCE.into())),
             InitSystem::Systemd => Some(UnitSrc::Path(SERVICE_SRC.into())),
@@ -62,7 +59,6 @@ impl ConfigureUpstreamInitService {
                 dest: "/etc/systemd/system/nix-daemon.socket".into(),
             }],
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(Self {
@@ -72,7 +68,6 @@ impl ConfigureUpstreamInitService {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_upstream_init_service")]
 impl Action for ConfigureUpstreamInitService {
     fn action_tag() -> ActionTag {
@@ -94,10 +89,9 @@ impl Action for ConfigureUpstreamInitService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         self.configure_init_service
             .try_execute()
-            .await
             .map_err(Self::error)?;
 
         Ok(())
@@ -111,8 +105,8 @@ impl Action for ConfigureUpstreamInitService {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
-        self.configure_init_service.try_revert().await?;
+    fn revert(&mut self) -> Result<(), ActionError> {
+        self.configure_init_service.try_revert()?;
 
         Ok(())
     }

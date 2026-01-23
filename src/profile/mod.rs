@@ -55,49 +55,34 @@ pub(crate) struct Profile<'a> {
 }
 
 impl Profile<'_> {
-    pub(crate) async fn install_packages(
-        &self,
-        to_default: WriteToDefaultProfile,
-    ) -> Result<(), Error> {
-        match get_profile_backend_type(self.profile).await {
-            Some(BackendType::NixProfile) => {
-                nixprofile::NixProfile {
-                    nix_store_path: self.nix_store_path,
-                    nss_ca_cert_path: self.nss_ca_cert_path,
-                    profile: self.profile,
-                    pkgs: self.pkgs,
-                }
-                .install_packages(to_default)
-                .await
-            },
-            _ => {
-                nixenv::NixEnv {
-                    nix_store_path: self.nix_store_path,
-                    nss_ca_cert_path: self.nss_ca_cert_path,
-                    profile: self.profile,
-                    pkgs: self.pkgs,
-                }
-                .install_packages(to_default)
-                .await
-            },
+    pub(crate) fn install_packages(&self, to_default: WriteToDefaultProfile) -> Result<(), Error> {
+        match get_profile_backend_type(self.profile) {
+            Some(BackendType::NixProfile) => nixprofile::NixProfile {
+                nix_store_path: self.nix_store_path,
+                nss_ca_cert_path: self.nss_ca_cert_path,
+                profile: self.profile,
+                pkgs: self.pkgs,
+            }
+            .install_packages(to_default),
+            _ => nixenv::NixEnv {
+                nix_store_path: self.nix_store_path,
+                nss_ca_cert_path: self.nss_ca_cert_path,
+                profile: self.profile,
+                pkgs: self.pkgs,
+            }
+            .install_packages(to_default),
         }
     }
 }
 
-pub async fn get_profile_backend_type(profile: &std::path::Path) -> Option<BackendType> {
+pub fn get_profile_backend_type(profile: &std::path::Path) -> Option<BackendType> {
     // If the file has a manifest.json, that means `nix profile` touched it, and ONLY `nix profile` can touch it.
-    if tokio::fs::metadata(profile.join("manifest.json"))
-        .await
-        .is_ok()
-    {
+    if std::fs::metadata(profile.join("manifest.json")).is_ok() {
         return Some(BackendType::NixProfile);
     }
 
     // If the file has a manifest.nix, that means it was created by `nix-env`.
-    if tokio::fs::metadata(profile.join("manifest.nix"))
-        .await
-        .is_ok()
-    {
+    if std::fs::metadata(profile.join("manifest.nix")).is_ok() {
         return Some(BackendType::NixEnv);
     }
 

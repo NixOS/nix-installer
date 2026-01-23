@@ -1,6 +1,6 @@
 use std::{process::Output, time::SystemTime};
 
-use tokio::process::Command;
+use std::process::Command;
 use which::which;
 
 #[non_exhaustive]
@@ -54,7 +54,7 @@ impl Shell {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn self_test(&self) -> Result<(), SelfTestError> {
+    pub fn self_test(&self) -> Result<(), SelfTestError> {
         let executable = self.executable();
         let mut command = match &self {
             // On Mac, `bash -ic nix` won't work, but `bash -lc nix` will.
@@ -86,7 +86,7 @@ impl Shell {
         command.arg(format!(
             r#"exec nix build --option substitute false --option post-build-hook '' --no-link --expr 'derivation {{ name = "self-test-{executable}-{timestamp_millis}"; system = "{SYSTEM}"; builder = "/bin/sh"; args = ["-c" "echo hello > \$out"]; }}'"#
         ));
-        let command_str = format!("{:?}", command.as_std());
+        let command_str = format!("{:?}", command);
 
         tracing::debug!(
             command = command_str,
@@ -96,7 +96,6 @@ impl Shell {
             .stdin(std::process::Stdio::null())
             .env("NIX_REMOTE", "daemon")
             .output()
-            .await
             .map_err(|error| SelfTestError::Command {
                 shell: *self,
                 command: command_str.clone(),
@@ -128,13 +127,13 @@ impl Shell {
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn self_test() -> Result<(), Vec<SelfTestError>> {
+pub fn self_test() -> Result<(), Vec<SelfTestError>> {
     let shells = Shell::discover();
 
     let mut failures = vec![];
 
     for shell in shells {
-        match shell.self_test().await {
+        match shell.self_test() {
             Ok(()) => (),
             Err(err) => failures.push(err),
         }

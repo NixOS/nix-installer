@@ -16,26 +16,23 @@ name = "nix-installer"
 required-features = [ "cli" ]
 
 [dependencies]
-async-trait = { version = "0.1.57", default-features = false }
-bytes = { version = "1.11.0", default-features = false, features = ["std", "serde"] }
 clap = { version = "4", features = ["std", "color", "usage", "help", "error-context", "suggestions", "derive", "env"], optional = true }
 color-eyre = { version = "0.6.2", default-features = false, features = [ "track-caller", "issue-url", "tracing-error", "capture-spantrace", "color-spantrace" ], optional = true }
+ctrlc = { version = "3.4", features = ["termination"] }
 eyre = { version = "0.6.8", default-features = false, features = [ "track-caller" ], optional = true }
 glob = { version = "0.3.0", default-features = false }
 nix = { version = "0.31.0", default-features = false, features = ["user", "fs", "process", "term"] }
 owo-colors = { version = "4.0.0", default-features = false, features = [ "supports-colors" ] }
-reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots", "stream", "socks"] }
 serde = { version = "1.0.203", default-features = false, features = [ "std", "derive" ] }
 serde_json = { version = "1.0.149", default-features = false, features = [ "std" ] }
 tar = { version = "0.4.38", default-features = false, features = [ "xattr" ] }
 target-lexicon = { version = "0.13.4", default-features = false, features = [ "std" ] }
 thiserror = { version = "2.0.18", default-features = false }
-tokio = { version = "1.49.0", default-features = false, features = ["time", "io-std", "process", "fs", "signal", "tracing", "rt-multi-thread", "macros", "io-util", "parking_lot" ] }
 tracing = { version = "0.1.36", default-features = false, features = [ "std", "attributes" ] }
 tracing-error = { version = "0.2.0", default-features = false, optional = true, features = ["traced-error"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = [ "std", "registry", "fmt", "json", "ansi", "env-filter" ], optional = true }
 url = { version = "2.5.8", default-features = false, features = ["serde"] }
-xz2 = { version = "0.1.7", default-features = false, features = ["static", "tokio"] }
+zstd = { version = "0.13", default-features = false }
 plist = { version = "=1.8.0", default-features = false, features = [ "serde" ]}
 dirs = { version = "6.0.0", default-features = false }
 typetag = { version = "0.2.17", default-features = false }

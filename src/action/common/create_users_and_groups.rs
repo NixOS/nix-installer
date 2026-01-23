@@ -22,7 +22,7 @@ pub struct CreateUsersAndGroups {
 
 impl CreateUsersAndGroups {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan(settings: CommonSettings) -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan(settings: CommonSettings) -> Result<StatefulAction<Self>, ActionError> {
         let create_group = CreateGroup::plan(
             settings.nix_build_group_name.clone(),
             settings.nix_build_group_id,
@@ -39,7 +39,6 @@ impl CreateUsersAndGroups {
                     format!("Nix build user {index}"),
                     true,
                 )
-                .await
                 .map_err(Self::error)?,
             );
             add_users_to_groups.push(
@@ -49,7 +48,6 @@ impl CreateUsersAndGroups {
                     settings.nix_build_group_name.clone(),
                     settings.nix_build_group_id,
                 )
-                .await
                 .map_err(Self::error)?,
             );
         }
@@ -67,7 +65,6 @@ impl CreateUsersAndGroups {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_users_and_group")]
 impl Action for CreateUsersAndGroups {
     fn action_tag() -> ActionTag {
@@ -137,7 +134,7 @@ impl Action for CreateUsersAndGroups {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self {
             create_users,
             create_group,
@@ -150,19 +147,19 @@ impl Action for CreateUsersAndGroups {
         } = self;
 
         // Create group
-        create_group.try_execute().await?;
+        create_group.try_execute()?;
 
         // Mac is apparently not threadsafe here...
         use target_lexicon::OperatingSystem;
         match OperatingSystem::host() {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                 for create_user in create_users.iter_mut() {
-                    create_user.try_execute().await.map_err(Self::error)?;
+                    create_user.try_execute().map_err(Self::error)?;
                 }
             },
             _ => {
                 for create_user in create_users.iter_mut() {
-                    create_user.try_execute().await.map_err(Self::error)?;
+                    create_user.try_execute().map_err(Self::error)?;
                 }
                 // While we may be tempted to do something like this, it can break on many older OSes like Ubuntu 18.04:
                 // ```
@@ -176,12 +173,12 @@ impl Action for CreateUsersAndGroups {
                 //     let span = tracing::Span::current().clone();
                 //     let mut create_user_clone = create_user.clone();
                 //     let _abort_handle = set.spawn(async move {
-                //         create_user_clone.try_execute().instrument(span).await?;
+                //         create_user_clone.try_execute()?;
                 //         Result::<_, _>::Ok((idx, create_user_clone))
                 //     });
                 // }
 
-                // while let Some(result) = set.join_next().await {
+                // while let Some(result) = set.join_next() {
                 //     match result {
                 //         Ok(Ok((idx, success))) => create_users[idx] = success,
                 //         Ok(Err(e)) => errors.push(Box::new(e)),
@@ -200,7 +197,7 @@ impl Action for CreateUsersAndGroups {
         };
 
         for add_user_to_group in add_users_to_groups.iter_mut() {
-            add_user_to_group.try_execute().await.map_err(Self::error)?;
+            add_user_to_group.try_execute().map_err(Self::error)?;
         }
 
         Ok(())
@@ -254,21 +251,21 @@ impl Action for CreateUsersAndGroups {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
         for create_user in self.create_users.iter_mut() {
-            if let Err(err) = create_user.try_revert().await {
+            if let Err(err) = create_user.try_revert() {
                 errors.push(err);
             }
         }
 
         // We don't actually need to do this, when a user is deleted they are removed from groups
         // for add_user_to_group in add_users_to_groups.iter_mut() {
-        //     add_user_to_group.try_revert().await?;
+        //     add_user_to_group.try_revert()?;
         // }
 
         // Create group
-        if let Err(err) = self.create_group.try_revert().await {
+        if let Err(err) = self.create_group.try_revert() {
             errors.push(err);
         }
 

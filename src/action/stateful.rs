@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, Span};
+use tracing::Span;
 
 use super::{Action, ActionDescription, ActionError, ActionTag};
 
@@ -56,7 +56,7 @@ impl StatefulAction<Box<dyn Action>> {
     ///
     /// You should prefer this ([`try_execute`][StatefulAction::try_execute]) over [`execute`][Action::execute] as it handles [`ActionState`] and does tracing
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn try_execute(&mut self) -> Result<(), ActionError> {
+    pub fn try_execute(&mut self) -> Result<(), ActionError> {
         match self.state {
             ActionState::Completed => {
                 tracing::trace!(
@@ -72,7 +72,7 @@ impl StatefulAction<Box<dyn Action>> {
             _ => {
                 self.state = ActionState::Progress;
                 tracing::debug!("Executing: {}", self.action.tracing_synopsis());
-                self.action.execute().await?;
+                self.action.execute()?;
                 self.state = ActionState::Completed;
                 tracing::debug!("Completed: {}", self.action.tracing_synopsis());
                 Ok(())
@@ -83,7 +83,7 @@ impl StatefulAction<Box<dyn Action>> {
     ///
     /// You should prefer this ([`try_revert`][StatefulAction::try_revert]) over [`revert`][Action::revert] as it handles [`ActionState`] and does tracing
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn try_revert(&mut self) -> Result<(), ActionError> {
+    pub fn try_revert(&mut self) -> Result<(), ActionError> {
         match self.state {
             ActionState::Uncompleted => {
                 tracing::trace!(
@@ -99,7 +99,7 @@ impl StatefulAction<Box<dyn Action>> {
             _ => {
                 self.state = ActionState::Progress;
                 tracing::debug!("Reverting: {}", self.action.tracing_synopsis());
-                self.action.revert().await?;
+                self.action.revert()?;
                 tracing::debug!("Reverted: {}", self.action.tracing_synopsis());
                 self.state = ActionState::Uncompleted;
                 Ok(())
@@ -157,35 +157,27 @@ where
     /// Perform any execution steps
     ///
     /// You should prefer this ([`try_execute`][StatefulAction::try_execute]) over [`execute`][Action::execute] as it handles [`ActionState`] and does tracing
-    pub async fn try_execute(&mut self) -> Result<(), ActionError> {
+    pub fn try_execute(&mut self) -> Result<(), ActionError> {
         let span = self.action.tracing_span();
+        let _guard = span.enter();
         match self.state {
             ActionState::Completed => {
                 tracing::trace!(
-                    parent: &span,
                     "Completed: (Already done) {}",
                     self.action.tracing_synopsis()
                 );
                 Ok(())
             },
             ActionState::Skipped => {
-                tracing::trace!(parent: &span, "Skipped: {}", self.action.tracing_synopsis());
+                tracing::trace!("Skipped: {}", self.action.tracing_synopsis());
                 Ok(())
             },
             _ => {
                 self.state = ActionState::Progress;
-                tracing::debug!(
-                    parent: &span,
-                    "Executing: {}",
-                    self.action.tracing_synopsis()
-                );
-                self.action.execute().instrument(span.clone()).await?;
+                tracing::debug!("Executing: {}", self.action.tracing_synopsis());
+                self.action.execute()?;
                 self.state = ActionState::Completed;
-                tracing::debug!(
-                    parent: &span,
-                    "Completed: {}",
-                    self.action.tracing_synopsis()
-                );
+                tracing::debug!("Completed: {}", self.action.tracing_synopsis());
                 Ok(())
             },
         }
@@ -193,34 +185,26 @@ where
     /// Perform any revert steps
     ///
     /// You should prefer this ([`try_revert`][StatefulAction::try_revert]) over [`revert`][Action::revert] as it handles [`ActionState`] and does tracing
-    pub async fn try_revert(&mut self) -> Result<(), ActionError> {
+    pub fn try_revert(&mut self) -> Result<(), ActionError> {
         let span = self.action.tracing_span();
+        let _guard = span.enter();
         match self.state {
             ActionState::Uncompleted => {
                 tracing::trace!(
-                    parent: &span,
                     "Reverted: (Already done) {}",
                     self.action.tracing_synopsis()
                 );
                 Ok(())
             },
             ActionState::Skipped => {
-                tracing::trace!(parent: &span, "Skipped: {}", self.action.tracing_synopsis());
+                tracing::trace!("Skipped: {}", self.action.tracing_synopsis());
                 Ok(())
             },
             _ => {
                 self.state = ActionState::Progress;
-                tracing::debug!(
-                    parent: &span,
-                    "Reverting: {}",
-                    self.action.tracing_synopsis()
-                );
-                self.action.revert().instrument(span.clone()).await?;
-                tracing::debug!(
-                    parent: &span,
-                    "Reverted: {}",
-                    self.action.tracing_synopsis()
-                );
+                tracing::debug!("Reverting: {}", self.action.tracing_synopsis());
+                self.action.revert()?;
+                tracing::debug!("Reverted: {}", self.action.tracing_synopsis());
                 self.state = ActionState::Uncompleted;
                 Ok(())
             },

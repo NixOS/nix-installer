@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use tokio::fs::create_dir;
-use tokio::process::Command;
+use std::fs::create_dir;
+use std::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
@@ -21,7 +21,7 @@ pub struct EnsureSteamosNixDirectory;
 
 impl EnsureSteamosNixDirectory {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn plan() -> Result<StatefulAction<Self>, ActionError> {
+    pub fn plan() -> Result<StatefulAction<Self>, ActionError> {
         if which::which("steamos-readonly").is_err() {
             return Err(Self::error(ActionErrorKind::MissingSteamosBinary(
                 "steamos-readonly".into(),
@@ -35,7 +35,6 @@ impl EnsureSteamosNixDirectory {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "ensure_steamos_nix_directory")]
 impl Action for EnsureSteamosNixDirectory {
     fn action_tag() -> ActionTag {
@@ -61,29 +60,24 @@ impl Action for EnsureSteamosNixDirectory {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         execute_command(
             Command::new("steamos-readonly")
-                .process_group(0)
                 .arg("disable")
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)?;
 
         let path = PathBuf::from("/nix");
         create_dir(&path)
-            .await
             .map_err(|e| ActionErrorKind::CreateDirectory(path.clone(), e))
             .map_err(Self::error)?;
 
         execute_command(
             Command::new("steamos-readonly")
-                .process_group(0)
                 .arg("enable")
                 .stdin(std::process::Stdio::null()),
         )
-        .await
         .map_err(Self::error)?;
 
         Ok(())
@@ -94,7 +88,7 @@ impl Action for EnsureSteamosNixDirectory {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         // noop
 
         Ok(())

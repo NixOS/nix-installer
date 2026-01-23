@@ -1,6 +1,6 @@
 use nix::unistd::Group;
+use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tokio::process::Command;
 use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
@@ -58,7 +58,6 @@ impl CreateGroup {
     }
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "create_group")]
 impl Action for CreateGroup {
     fn action_tag() -> ActionTag {
@@ -87,7 +86,7 @@ impl Action for CreateGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn execute(&mut self) -> Result<(), ActionError> {
+    fn execute(&mut self) -> Result<(), ActionError> {
         let Self { name, gid } = self;
 
         use OperatingSystem;
@@ -95,7 +94,6 @@ impl Action for CreateGroup {
             OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
                 execute_command(
                     Command::new("/usr/sbin/dseditgroup")
-                        .process_group(0)
                         .args([
                             "-o",
                             "create",
@@ -107,27 +105,22 @@ impl Action for CreateGroup {
                         ])
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
             _ => {
                 if which::which("groupadd").is_ok() {
                     execute_command(
                         Command::new("groupadd")
-                            .process_group(0)
                             .args(["-g", &gid.to_string(), "--system", name])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("addgroup").is_ok() {
                     execute_command(
                         Command::new("addgroup")
-                            .process_group(0)
                             .args(["-g", &gid.to_string(), "--system", name])
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(ActionErrorKind::MissingGroupCreationCommand));
@@ -149,7 +142,7 @@ impl Action for CreateGroup {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn revert(&mut self) -> Result<(), ActionError> {
+    fn revert(&mut self) -> Result<(), ActionError> {
         let Self { name, gid: _ } = self;
 
         use OperatingSystem;
@@ -160,27 +153,22 @@ impl Action for CreateGroup {
                         .args([".", "-delete", &format!("/Groups/{name}")])
                         .stdin(std::process::Stdio::null()),
                 )
-                .await
                 .map_err(Self::error)?;
             },
             _ => {
                 if which::which("groupdel").is_ok() {
                     execute_command(
                         Command::new("groupdel")
-                            .process_group(0)
                             .arg(name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else if which::which("delgroup").is_ok() {
                     execute_command(
                         Command::new("delgroup")
-                            .process_group(0)
                             .arg(name)
                             .stdin(std::process::Stdio::null()),
                     )
-                    .await
                     .map_err(Self::error)?;
                 } else {
                     return Err(Self::error(ActionErrorKind::MissingGroupDeletionCommand));

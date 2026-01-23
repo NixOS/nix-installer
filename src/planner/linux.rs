@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use tokio::process::Command;
+use std::process::Command;
 use which::which;
 
 use super::ShellProfileLocations;
@@ -29,43 +29,38 @@ pub struct Linux {
     pub init: InitSettings,
 }
 
-#[async_trait::async_trait]
 #[typetag::serde(name = "linux")]
 impl Planner for Linux {
-    async fn default() -> Result<Self, PlannerError> {
+    fn default() -> Result<Self, PlannerError> {
         Ok(Self {
-            settings: CommonSettings::default().await?,
-            init: InitSettings::default().await?,
+            settings: CommonSettings::default()?,
+            init: InitSettings::default()?,
         })
     }
 
-    async fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
-        let has_selinux = detect_selinux().await?;
+    fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        let has_selinux = detect_selinux()?;
 
         let mut plan = vec![];
 
         plan.push(
             CreateDirectory::plan("/nix", None, None, 0o0755, true)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
 
         plan.push(
             ProvisionNix::plan(&self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             CreateUsersAndGroups::plan(self.settings.clone())
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -73,7 +68,6 @@ impl Planner for Linux {
         if has_selinux {
             plan.push(
                 ProvisionSelinux::plan(FHS_SELINUX_POLICY_PATH.into(), SELINUX_POLICY_PP_CONTENT)
-                    .await
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -81,20 +75,17 @@ impl Planner for Linux {
 
         plan.push(
             CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
 
         plan.push(
             ConfigureUpstreamInitService::plan(self.init.init, self.init.start_daemon)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
         plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
-                .await
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
@@ -112,10 +103,8 @@ impl Planner for Linux {
         Ok(map)
     }
 
-    async fn configured_settings(
-        &self,
-    ) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
-        let default = Self::default().await?.settings()?;
+    fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
+        let default = Self::default()?.settings()?;
         let configured = self.settings()?;
 
         let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
@@ -128,7 +117,7 @@ impl Planner for Linux {
         Ok(settings)
     }
 
-    async fn platform_check(&self) -> Result<(), PlannerError> {
+    fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
         match target_lexicon::OperatingSystem::host() {
             OperatingSystem::Linux => Ok(()),
@@ -139,7 +128,7 @@ impl Planner for Linux {
         }
     }
 
-    async fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
         check_not_wsl1()?;
 
         if self.init.init == InitSystem::Systemd && self.init.start_daemon {
@@ -149,10 +138,10 @@ impl Planner for Linux {
         Ok(())
     }
 
-    async fn pre_install_check(&self) -> Result<(), PlannerError> {
+    fn pre_install_check(&self) -> Result<(), PlannerError> {
         check_not_nixos()?;
 
-        check_nix_not_already_installed().await?;
+        check_nix_not_already_installed()?;
 
         check_not_wsl1()?;
 
@@ -187,7 +176,7 @@ pub(crate) fn check_not_wsl1() -> Result<(), PlannerError> {
     Ok(())
 }
 
-pub(crate) async fn detect_selinux() -> Result<bool, PlannerError> {
+pub(crate) fn detect_selinux() -> Result<bool, PlannerError> {
     if Path::new("/sys/fs/selinux").exists() && which("sestatus").is_ok() {
         // We expect systems with SELinux to have the normal SELinux tools.
         let has_semodule = which("semodule").is_ok();
@@ -202,13 +191,12 @@ pub(crate) async fn detect_selinux() -> Result<bool, PlannerError> {
     }
 }
 
-pub(crate) async fn check_nix_not_already_installed() -> Result<(), PlannerError> {
+pub(crate) fn check_nix_not_already_installed() -> Result<(), PlannerError> {
     // For now, we don't try to repair the user's Nix install or anything special.
     if Command::new("nix-env")
         .arg("--version")
         .stdin(std::process::Stdio::null())
         .status()
-        .await
         .is_ok()
     {
         return Err(PlannerError::NixExists);
