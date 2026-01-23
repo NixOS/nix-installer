@@ -1,7 +1,7 @@
 use std::{process::Output, time::SystemTime};
 
+use crate::util::which;
 use std::process::Command;
-use which::which;
 
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
@@ -117,7 +117,7 @@ impl Shell {
     pub fn discover() -> Vec<Shell> {
         let mut found_shells = vec![];
         for shell in Self::all() {
-            if which(shell.executable()).is_ok() {
+            if which(shell.executable()).is_some() {
                 tracing::debug!("Discovered `{shell}`");
                 found_shells.push(*shell)
             }

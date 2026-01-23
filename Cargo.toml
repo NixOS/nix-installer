@@ -42,7 +42,7 @@ semver = { version = "1.0.23", default-features = false, features = ["serde", "s
 uuid = { version = "1.19.0", features = ["serde"] }
 
 nix-config-parser = { version = "0.2", features = ["serde"] }
-which = "8.0.0"
+
 sysctl = "0.7.1"
 walkdir = "2.3.3"
 tempfile = "3.24.0"

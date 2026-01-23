@@ -7,6 +7,7 @@ use tracing::{span, Span};
 use crate::action::macos::DARWIN_LAUNCHD_DOMAIN;
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription};
 use crate::settings::InitSystem;
@@ -133,7 +134,7 @@ impl ConfigureInitService {
                     }
                 }
 
-                if which::which("systemctl").is_err() {
+                if which("systemctl").is_none() {
                     return Err(Self::error(ActionErrorKind::SystemdMissing));
                 }
             },

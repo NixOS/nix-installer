@@ -5,6 +5,7 @@ use tracing::{span, Span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag};
 use crate::execute_command;
+use crate::util::which;
 
 use crate::action::{Action, ActionDescription, StatefulAction};
 
@@ -21,7 +22,7 @@ impl SystemctlDaemonReload {
             return Err(Self::error(ActionErrorKind::SystemdMissing));
         }
 
-        if which::which("systemctl").is_err() {
+        if which("systemctl").is_none() {
             return Err(Self::error(ActionErrorKind::SystemdMissing));
         }
 
