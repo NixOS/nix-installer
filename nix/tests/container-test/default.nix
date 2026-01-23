@@ -15,21 +15,11 @@ let
       system = "x86_64-linux";
     };
 
-    # focal
-    "ubuntu-v20_04" = {
+    # Noble
+    "ubuntu-v24_04" = {
       tarball = builtins.fetchurl {
-        url = "http://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.1-base-amd64.tar.gz";
-        sha256 = "0ryn38csmx41a415g9b3wk30csaxxlkgkdij9v4754pk877wpxlp";
-      };
-      tester = ./default/Dockerfile;
-      system = "x86_64-linux";
-    };
-
-    # bionic
-    "ubuntu-v18_04" = {
-      tarball = builtins.fetchurl {
-        url = "http://cdimage.ubuntu.com/ubuntu-base/releases/18.04/release/ubuntu-base-18.04.5-base-amd64.tar.gz";
-        sha256 = "1sh73pqwgyzkyssv3ngpxa2ynnkbdvjpxdw1v9ql4ghjpd3hpwlg";
+        url = "http://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-amd64.tar.gz";
+        sha256 = "1ybl31qj4ixyxi89h80gh71mpllnkqklbyj6pfrqil0ajgiwvhkb";
       };
       tester = ./default/Dockerfile;
       system = "x86_64-linux";

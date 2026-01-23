@@ -329,21 +329,21 @@ let
   images = {
 
     # End of standard support https://wiki.ubuntu.com/Releases
-    "ubuntu-v16_04" = {
-      image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/ubuntu1604/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-lO4oYQR2tCh5auxAYe6bPOgEqOgv3Y3GC1QM1tEEEU8=";
-      };
-      rootDisk = "box.img";
-      system = "x86_64-linux";
-    };
-
     "ubuntu-v22_04" = {
       image = import <nix/fetchurl.nix> {
         url = "https://app.vagrantup.com/generic/boxes/ubuntu2204/versions/4.1.12/providers/libvirt.box";
         hash = "sha256-HNll0Qikw/xGIcogni5lz01vUv+R3o8xowP2EtqjuUQ=";
       };
       rootDisk = "box.img";
+      system = "x86_64-linux";
+    };
+
+    "ubuntu-v24_04" = {
+      image = import <nix/fetchurl.nix> {
+        url = "https://vagrantcloud.com/bento/boxes/ubuntu-24.04/versions/202502.21.0/providers/libvirt/amd64/vagrant.box";
+        hash = "sha256-nXerG+g7DG2EszsczaOeVMkbpPOTXGKa+KdYHvF9jq8=";
+      };
+      rootDisk = "box_0.img";
       system = "x86_64-linux";
     };
 
