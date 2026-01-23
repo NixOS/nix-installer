@@ -1,5 +1,5 @@
 # Largely derived from https://github.com/NixOS/nix/blob/14f7dae3e4eb0c34192d0077383a7f2a2d630129/tests/installer/default.nix
-{ forSystem, binaryTarball }:
+{ forSystem }:
 
 let
   images = {
@@ -66,7 +66,6 @@ let
         machine.succeed("mkdir -p /test")
         machine.copy_from_host("${image.tester}", "/test/Dockerfile")
         machine.copy_from_host("${nix-installer-static}", "/test/nix-installer")
-        machine.copy_from_host("${binaryTarball.${system}}", "/test/binary-tarball")
         machine.succeed("${containerTool} import /image default")
         machine.succeed("${containerTool} build -t test /test")
       '';

@@ -325,17 +325,13 @@
 
       hydraJobs = {
         build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
-        #vm-test = import ./nix/tests/vm-test {
-        #  inherit forSystem;
-        #  inherit (nixpkgs) lib;
-
-        #  binaryTarball = nix.tarballs_indirect;
-        #};
-        #container-test = import ./nix/tests/container-test {
-        #  inherit forSystem;
-
-        #  binaryTarball = nix.tarballs_indirect;
-        #};
+        vm-test = import ./nix/tests/vm-test {
+          inherit forSystem;
+          inherit (nixpkgs) lib;
+        };
+        container-test = import ./nix/tests/container-test {
+          inherit forSystem;
+        };
       };
     };
 }
