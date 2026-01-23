@@ -9,6 +9,9 @@
     nix.url = "github:NixOS/nix/2.33.1";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
+
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -16,6 +19,7 @@
     , nixpkgs
     , crane
     , nix
+    , treefmt-nix
     , ...
     }:
     let
@@ -28,6 +32,12 @@
         pkgs = import nixpkgs { inherit system; overlays = [ self.overlays.default ]; };
         lib = pkgs.lib;
       };
+
+      # Eval the treefmt modules from ./treefmt.nix
+      treefmtEval = forAllSystems (
+        { pkgs, ... }:
+        treefmt-nix.lib.evalModule pkgs ./treefmt.nix
+      );
 
       # Build the nix binary tarball and recompress with zstd
       # This is similar to nix's packaging/binary-tarball.nix but outputs zstd
@@ -121,6 +131,9 @@
         });
     in
     {
+      # for `nix fmt`
+      formatter = forAllSystems ({ system, ... }: treefmtEval.${system}.config.build.wrapper);
+
       overlays.default = final: prev:
         {
           nix-installer = installerPackage {
@@ -135,7 +148,6 @@
 
       devShells = forAllSystems ({ system, pkgs, ... }:
         let
-          check = import ./nix/check.nix { inherit pkgs; };
           tarballPkg = nixTarballZstd { inherit pkgs system; };
         in
         {
@@ -149,24 +161,21 @@
             NIX_VERSION = tarballPkg.passthru.nixVersion;
 
             buildInputs = with pkgs; [
+              # Rust development
               rustc
               cargo
               clippy
-              rustfmt
-              shellcheck
               rust-analyzer
               cargo-outdated
-              cacert
+              cargo-semver-checks
               # cargo-audit # NOTE(cole-h): build currently broken because of time dependency and Rust 1.80
               cargo-watch
-              nixpkgs-fmt
-              check.check-rustfmt
-              check.check-spelling
-              check.check-nixpkgs-fmt
-              check.check-editorconfig
-              check.check-semver
-              check.check-clippy
-              editorconfig-checker
+              cacert
+
+              # treefmt (for `nix fmt` and manual formatting)
+              treefmtEval.${system}.config.build.wrapper
+
+              # Testing
               act
             ]
             ++ lib.optionals (pkgs.stdenv.isDarwin) (with pkgs; [
@@ -182,39 +191,21 @@
           };
         });
 
-      checks = forAllSystems ({ pkgs, ... }:
+      checks = forAllSystems ({ system, pkgs, ... }:
         let
-          check = import ./nix/check.nix { inherit pkgs; };
           # Extract version from Cargo.toml
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
           installerVersion = cargoToml.package.version;
-          nixVersion = nix.packages.${pkgs.system}.nix.version;
+          nixVersion = nix.packages.${system}.nix.version;
           # Extract major.minor from both versions
           versionParts = ver: builtins.match "([0-9]+)\\.([0-9]+).*" ver;
           installerMajorMinor = versionParts installerVersion;
           nixMajorMinor = versionParts nixVersion;
         in
         {
-          check-rustfmt = pkgs.runCommand "check-rustfmt" { buildInputs = [ check.check-rustfmt ]; } ''
-            cd ${./.}
-            check-rustfmt
-            touch $out
-          '';
-          check-spelling = pkgs.runCommand "check-spelling" { buildInputs = [ check.check-spelling ]; } ''
-            cd ${./.}
-            check-spelling
-            touch $out
-          '';
-          check-nixpkgs-fmt = pkgs.runCommand "check-nixpkgs-fmt" { buildInputs = [ check.check-nixpkgs-fmt ]; } ''
-            cd ${./.}
-            check-nixpkgs-fmt
-            touch $out
-          '';
-          check-editorconfig = pkgs.runCommand "check-editorconfig" { buildInputs = [ pkgs.git check.check-editorconfig ]; } ''
-            cd ${./.}
-            check-editorconfig
-            touch $out
-          '';
+          # treefmt handles: rustfmt, nixfmt, shfmt, shellcheck, typos, taplo, yamlfmt, actionlint, editorconfig
+          formatting = treefmtEval.${system}.config.build.check self;
+
           check-version-consistency =
             assert installerMajorMinor == nixMajorMinor ||
               throw "Version mismatch: installer version ${installerVersion} (${builtins.elemAt installerMajorMinor 0}.${builtins.elemAt installerMajorMinor 1}) does not match Nix version ${nixVersion} (${builtins.elemAt nixMajorMinor 0}.${builtins.elemAt nixMajorMinor 1}). The installer's major.minor must match the Nix version.";
@@ -222,6 +213,15 @@
               echo "Version consistency check passed: installer ${installerVersion} matches Nix ${nixVersion}"
               touch $out
             '';
+
+          check-clippy = pkgs.runCommand "check-clippy"
+            {
+              nativeBuildInputs = [ pkgs.cargo pkgs.clippy pkgs.rustc ];
+            } ''
+            cd ${./.}
+            cargo clippy -- -D warnings
+            touch $out
+          '';
         });
 
       packages = forAllSystems ({ system, pkgs, ... }:
@@ -250,17 +250,17 @@
 
       hydraJobs = {
         build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
-        # vm-test = import ./nix/tests/vm-test {
-        #   inherit forSystem;
-        #   inherit (nixpkgs) lib;
+        #vm-test = import ./nix/tests/vm-test {
+        #  inherit forSystem;
+        #  inherit (nixpkgs) lib;
 
-        #   binaryTarball = nix.tarballs_indirect;
-        # };
-        # container-test = import ./nix/tests/container-test {
-        #   inherit forSystem;
+        #  binaryTarball = nix.tarballs_indirect;
+        #};
+        #container-test = import ./nix/tests/container-test {
+        #  inherit forSystem;
 
-        #   binaryTarball = nix.tarballs_indirect;
-        # };
+        #  binaryTarball = nix.tarballs_indirect;
+        #};
       };
     };
 }
