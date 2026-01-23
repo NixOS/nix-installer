@@ -130,10 +130,10 @@ fn get_os_release_id() -> Option<String> {
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    Action, InstallPlan, NixInstallerError,
     action::{ActionError, StatefulAction},
     error::HasExpectedErrors,
     settings::{CommonSettings, InstallSettingsError},
-    Action, InstallPlan, NixInstallerError,
 };
 
 /// Something which can be used to plan out an [`InstallPlan`]
@@ -374,13 +374,17 @@ impl Default for FishShellProfileLocations {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum PlannerError {
-    #[error("The selected planner (`{planner}`) does not support the host's operating system (`{host_os}`)")]
+    #[error(
+        "The selected planner (`{planner}`) does not support the host's operating system (`{host_os}`)"
+    )]
     IncompatibleOperatingSystem {
         planner: &'static str,
         host_os: target_lexicon::OperatingSystem,
     },
     /// `nix-installer` does not have a default planner for the target architecture right now
-    #[error("`nix-installer` does not have a default planner for the `{0}` architecture right now, pass a specific archetype")]
+    #[error(
+        "`nix-installer` does not have a default planner for the `{0}` architecture right now, pass a specific archetype"
+    )]
     UnsupportedArchitecture(target_lexicon::Triple),
     /// Error executing action
     #[error("Error executing action")]
@@ -398,10 +402,14 @@ pub enum PlannerError {
     Plist(#[from] plist::Error),
     #[error(transparent)]
     Sysctl(#[from] sysctl::SysctlError),
-    #[error("Detected that this process is running under Rosetta, using Nix in Rosetta is not supported (Please open an issue with your use case)")]
+    #[error(
+        "Detected that this process is running under Rosetta, using Nix in Rosetta is not supported (Please open an issue with your use case)"
+    )]
     RosettaDetected,
     /// A Linux SELinux related error
-    #[error("Unable to install on an SELinux system without common SELinux tooling, the binaries `restorecon`, and `semodule` are required")]
+    #[error(
+        "Unable to install on an SELinux system without common SELinux tooling, the binaries `restorecon`, and `semodule` are required"
+    )]
     SelinuxRequirements,
     /// A UTF-8 related error
     #[error("UTF-8 error")]
@@ -413,7 +421,9 @@ pub enum PlannerError {
     NixOs,
     #[error("`nix` is already a valid command, so it is installed")]
     NixExists,
-    #[error("WSL1 is not supported, please upgrade to WSL2: https://learn.microsoft.com/en-us/windows/wsl/install#upgrade-version-from-wsl-1-to-wsl-2")]
+    #[error(
+        "WSL1 is not supported, please upgrade to WSL2: https://learn.microsoft.com/en-us/windows/wsl/install#upgrade-version-from-wsl-1-to-wsl-2"
+    )]
     Wsl1,
     /// Failed to execute command
     #[error("Failed to execute command `{0}`")]

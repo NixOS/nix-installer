@@ -1,7 +1,7 @@
 use nix::unistd::User;
 use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::base::create_user::delete_user_macos;
 use crate::action::{ActionError, ActionErrorKind, ActionTag};

@@ -1,4 +1,4 @@
-use nix::unistd::{chown, Group, User};
+use nix::unistd::{Group, User, chown};
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -11,7 +11,7 @@ use std::{
     os::{unix::fs::MetadataExt, unix::fs::OpenOptionsExt, unix::prelude::PermissionsExt},
     path::{Path, PathBuf},
 };
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
 pub enum Position {
@@ -549,13 +549,13 @@ mod test {
                 _ => {
                     return Err(eyre!(
                         "Should have returned an ActionErrorKind::PathWasNotFile error"
-                    ))
+                    ));
                 },
             },
             _ => {
                 return Err(eyre!(
                     "Should have returned an ActionErrorKind::PathWasNotFile error"
-                ))
+                ));
             },
         }
 

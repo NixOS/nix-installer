@@ -1,21 +1,21 @@
 use crate::action::{
-    base::{create_or_insert_into_file, CreateOrInsertIntoFile},
+    Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
+    base::{CreateOrInsertIntoFile, create_or_insert_into_file},
     macos::{
         BootstrapLaunchctlService, CreateApfsVolume, CreateSyntheticObjects, EnableOwnership,
         EncryptApfsVolume, UnmountApfsVolume,
     },
-    Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
 };
 use std::process::Command;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use super::{
-    create_fstab_entry::CreateFstabEntry, CreateVolumeService, KickstartLaunchctlService,
-    DARWIN_LAUNCHD_DOMAIN,
+    CreateVolumeService, DARWIN_LAUNCHD_DOMAIN, KickstartLaunchctlService,
+    create_fstab_entry::CreateFstabEntry,
 };
 
 pub const NIX_VOLUME_MOUNTD_DEST: &str = "/Library/LaunchDaemons/org.nixos.darwin-store.plist";

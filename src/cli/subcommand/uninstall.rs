@@ -5,17 +5,17 @@ use std::{
 };
 
 use crate::{
+    InstallPlan, NixInstallerError,
     cli::{ensure_root, interaction::PromptChoice, setup_signal_handler},
     error::HasExpectedErrors,
-    plan::{current_version, RECEIPT_LOCATION},
-    InstallPlan, NixInstallerError,
+    plan::{RECEIPT_LOCATION, current_version},
 };
 use clap::{ArgAction, Parser};
-use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
 use rand::Rng;
 
-use crate::cli::{interaction, CommandExecute};
+use crate::cli::{CommandExecute, interaction};
 
 /// Uninstall a previously `nix-installer` installed Nix
 #[derive(Debug, Parser)]

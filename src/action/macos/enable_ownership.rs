@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};
 use crate::execute_command;

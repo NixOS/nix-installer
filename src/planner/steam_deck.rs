@@ -101,18 +101,18 @@ use std::{collections::HashMap, path::PathBuf, process::Output};
 use std::process::Command;
 
 use crate::{
+    BuiltinPlanner,
     action::{
+        Action, StatefulAction,
         base::{CreateDirectory, CreateFile, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         linux::{
             EnsureSteamosNixDirectory, RevertCleanSteamosNixOffload, StartSystemdUnit,
             SystemctlDaemonReload,
         },
-        Action, StatefulAction,
     },
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
-    BuiltinPlanner,
 };
 
 use super::ShellProfileLocations;
@@ -429,13 +429,21 @@ impl From<SteamDeck> for BuiltinPlanner {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum SteamDeckError {
-    #[error("`{0}` is not a path that can be canonicalized into an absolute path, bind mounts require an absolute path")]
+    #[error(
+        "`{0}` is not a path that can be canonicalized into an absolute path, bind mounts require an absolute path"
+    )]
     AbsolutePathRequired(PathBuf),
-    #[error("A `/home/.steamos/offload/nix` exists, however `nix.mount` does not point at it. If Nix was previously installed, try uninstalling then rebooting first")]
+    #[error(
+        "A `/home/.steamos/offload/nix` exists, however `nix.mount` does not point at it. If Nix was previously installed, try uninstalling then rebooting first"
+    )]
     OffloadExistsButUnitIncorrect,
-    #[error("Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` did not return success. Try running `systemctl daemon-reload`.")]
+    #[error(
+        "Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` did not return success. Try running `systemctl daemon-reload`."
+    )]
     SteamosNixMountUnitNotExists,
-    #[error("Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` returned a warning that `systemctl daemon-reload` should be run. Run `systemctl daemon-reload` then `systemctl start nix.mount`, then try again.")]
+    #[error(
+        "Detected the SteamOS `nix.mount` unit exists, but `systemctl status nix.mount` returned a warning that `systemctl daemon-reload` should be run. Run `systemctl daemon-reload` then `systemctl start nix.mount`, then try again."
+    )]
     NixMountSystemctlDaemonReloadRequired,
 }
 

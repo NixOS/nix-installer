@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use nix::unistd::{access, AccessFlags};
+use nix::unistd::{AccessFlags, access};
 
 use crate::action::ActionErrorKind;
 

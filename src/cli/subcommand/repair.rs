@@ -12,10 +12,10 @@ use crate::action::base::{AddUserToGroup, CreateGroup, CreateUser};
 use crate::action::common::{ConfigureShellProfile, CreateUsersAndGroups};
 use crate::action::{Action, ActionState, StatefulAction};
 use crate::cli::interaction::PromptChoice;
-use crate::cli::{ensure_root, CommandExecute};
+use crate::cli::{CommandExecute, ensure_root};
 use crate::plan::RECEIPT_LOCATION;
 use crate::planner::{PlannerError, ShellProfileLocations};
-use crate::{execute_command, InstallPlan};
+use crate::{InstallPlan, execute_command};
 
 /// The base UID that we temporarily move build users to while migrating macOS to the new range.
 const TEMP_USER_ID_BASE: u32 = 31000;
@@ -472,7 +472,9 @@ fn get_existing_receipt() -> Option<InstallPlan> {
                     },
                     Err(e) => {
                         tracing::debug!(?e);
-                        tracing::warn!("Could not parse receipt. Your receipt will not be updated to account for the new UIDs");
+                        tracing::warn!(
+                            "Could not parse receipt. Your receipt will not be updated to account for the new UIDs"
+                        );
                         None
                     },
                 },

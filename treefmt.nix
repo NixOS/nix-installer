@@ -4,10 +4,10 @@
   # Used to find the project root
   projectRootFile = "flake.nix";
 
-  # Rust formatting (edition 2021)
+  # Rust formatting
   programs.rustfmt = {
     enable = true;
-    edition = "2021";
+    edition = "2024";
   };
 
   # Nix formatting (nixfmt-rfc-style is the new standard)

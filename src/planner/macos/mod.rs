@@ -13,20 +13,20 @@ mod profile_queries;
 mod profiles;
 
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::RemoveDirectory,
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         macos::{
             ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, SetTmutilExclusions,
         },
-        StatefulAction,
     },
     execute_command,
     os::darwin::DiskUtilInfoOutput,
     planner::{Planner, PlannerError},
     settings::InstallSettingsError,
     settings::{CommonSettings, InitSystem},
-    Action, BuiltinPlanner,
 };
 
 /// A planner for MacOS (Darwin) systems
@@ -108,7 +108,9 @@ impl Planner for Macos {
                         .flatten()
                 {
                     if diskutil_info.file_vault {
-                        tracing::warn!("Existing volume was encrypted with FileVault, forcing `encrypt` to true");
+                        tracing::warn!(
+                            "Existing volume was encrypted with FileVault, forcing `encrypt` to true"
+                        );
                         true
                     } else {
                         choice
@@ -363,7 +365,9 @@ fn check_suis() -> Result<(), PlannerError> {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum MacosError {
-    #[error("`nix-darwin` installation detected, it must be removed before uninstalling Nix. Please refer to https://github.com/LnL7/nix-darwin#uninstalling for instructions how to uninstall `nix-darwin`.")]
+    #[error(
+        "`nix-darwin` installation detected, it must be removed before uninstalling Nix. Please refer to https://github.com/LnL7/nix-darwin#uninstalling for instructions how to uninstall `nix-darwin`."
+    )]
     UninstallNixDarwin,
 
     #[error("{0}")]

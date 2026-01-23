@@ -1,11 +1,11 @@
 use crate::{
     action::{
-        base::{AddUserToGroup, CreateGroup, CreateUser},
         Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
+        base::{AddUserToGroup, CreateGroup, CreateUser},
     },
     settings::CommonSettings,
 };
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "action_name", rename = "create_users_and_group")]
@@ -121,9 +121,9 @@ impl Action for CreateUsersAndGroups {
             }
         }
 
-        let mut explanation = vec![
-            format!("The Nix daemon requires system users (and a group they share) which it can act as in order to build"),
-        ];
+        let mut explanation = vec![format!(
+            "The Nix daemon requires system users (and a group they share) which it can act as in order to build"
+        )];
         if let Some(val) = create_group.describe_execute().first() {
             explanation.push(val.description.clone())
         }
@@ -228,9 +228,9 @@ impl Action for CreateUsersAndGroups {
             }
         }
 
-        let mut explanation = vec![
-            format!("The Nix daemon requires system users (and a group they share) which it can act as in order to build"),
-        ];
+        let mut explanation = vec![format!(
+            "The Nix daemon requires system users (and a group they share) which it can act as in order to build"
+        )];
         if let Some(val) = create_group.describe_revert().first() {
             explanation.push(val.description.clone())
         }

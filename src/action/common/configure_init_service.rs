@@ -2,7 +2,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::macos::DARWIN_LAUNCHD_DOMAIN;
 use crate::action::{ActionError, ActionErrorKind, ActionTag, StatefulAction};

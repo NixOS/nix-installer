@@ -1,8 +1,8 @@
 use crate::action::{
-    base::DeleteUser, Action, ActionDescription, ActionError, ActionErrorKind, ActionTag,
-    StatefulAction,
+    Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
+    base::DeleteUser,
 };
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "action_name", rename = "delete_users_in_group")]
@@ -41,8 +41,7 @@ impl Action for DeleteUsersInGroup {
     fn tracing_synopsis(&self) -> String {
         format!(
             "Delete users part of group `{}` (GID {}), they are part of a previous install and are no longer required with `auto-allocate-uids = true` in nix.conf",
-            self.group_name,
-            self.group_id,
+            self.group_name, self.group_id,
         )
     }
 
@@ -63,9 +62,9 @@ impl Action for DeleteUsersInGroup {
             }
         }
 
-        let mut explanation = vec![
-            format!("The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"),
-        ];
+        let mut explanation = vec![format!(
+            "The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"
+        )];
         explanation.append(&mut delete_users_descriptions);
 
         vec![ActionDescription::new(self.tracing_synopsis(), explanation)]
@@ -87,9 +86,9 @@ impl Action for DeleteUsersInGroup {
             }
         }
 
-        let mut explanation = vec![
-            format!("The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"),
-        ];
+        let mut explanation = vec![format!(
+            "The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"
+        )];
         explanation.append(&mut delete_users_descriptions);
 
         vec![ActionDescription::new(self.tracing_synopsis(), explanation)]

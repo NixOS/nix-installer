@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use crate::{
     action::{
+        Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
         base::SetupDefaultProfile,
         common::{ConfigureShellProfile, PlaceNixConfiguration},
-        Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
     },
     planner::ShellProfileLocations,
     settings::{CommonSettings, SCRATCH_DIR},
@@ -12,7 +12,7 @@ use crate::{
 
 use crate::action::common::SetupChannels;
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 /**
 Configure Nix and start it

@@ -1,4 +1,4 @@
-use crate::action::base::{create_or_insert_into_file, CreateDirectory, CreateOrInsertIntoFile};
+use crate::action::base::{CreateDirectory, CreateOrInsertIntoFile, create_or_insert_into_file};
 use crate::action::{
     Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
 };
@@ -6,7 +6,7 @@ use crate::planner::ShellProfileLocations;
 
 use nix::unistd::User;
 use std::path::{Path, PathBuf};
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 const PROFILE_NIX_FILE_SHELL: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh";
 const PROFILE_NIX_FILE_FISH: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.fish";

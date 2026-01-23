@@ -2,15 +2,15 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 use crate::{
+    NixInstallerError,
     action::{Action, ActionDescription, StatefulAction},
     planner::{BuiltinPlanner, Planner},
-    NixInstallerError,
 };
 use owo_colors::OwoColorize;
 use semver::{Version, VersionReq};
@@ -371,7 +371,7 @@ pub fn current_version() -> Result<Version, NixInstallerError> {
 mod test {
     use semver::Version;
 
-    use crate::{planner::BuiltinPlanner, InstallPlan, NixInstallerError};
+    use crate::{InstallPlan, NixInstallerError, planner::BuiltinPlanner};
 
     #[test]
     fn ensure_version_allows_compatible() -> Result<(), NixInstallerError> {

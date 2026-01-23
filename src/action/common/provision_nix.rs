@@ -1,10 +1,10 @@
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use super::CreateNixTree;
 use crate::{
     action::{
-        base::{FetchAndUnpackNix, MoveUnpackedNix},
         Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
+        base::{FetchAndUnpackNix, MoveUnpackedNix},
     },
     settings::{CommonSettings, SCRATCH_DIR},
 };

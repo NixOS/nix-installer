@@ -1,8 +1,8 @@
-use crate::action::base::{create_or_insert_into_file, CreateOrInsertIntoFile};
+use crate::action::base::{CreateOrInsertIntoFile, create_or_insert_into_file};
 use crate::action::{Action, ActionDescription, ActionError, ActionTag, StatefulAction};
 
 use std::path::Path;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 const PROFILE_NIX_FILE_SHELL: &str = "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh";
 

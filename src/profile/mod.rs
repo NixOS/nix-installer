@@ -12,7 +12,9 @@ pub enum Error {
     #[error("Failed to enumerate a store path: {0}")]
     EnumeratingStorePathContent(std::io::Error),
 
-    #[error("The following package has paths that intersect with other paths in other packages you want to install: {0}. Paths: {1:?}")]
+    #[error(
+        "The following package has paths that intersect with other paths in other packages you want to install: {0}. Paths: {1:?}"
+    )]
     PathConflict(PathBuf, Vec<PathBuf>),
 
     #[error("Failed to create a temp dir: {0}")]

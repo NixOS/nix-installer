@@ -1,11 +1,11 @@
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use nix::unistd::{chown, Group, User};
+use nix::unistd::{Group, User, chown};
 
 use std::process::Command;
 use target_lexicon::OperatingSystem;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{Action, ActionDescription, ActionErrorKind, ActionState};
 use crate::action::{ActionError, StatefulAction};

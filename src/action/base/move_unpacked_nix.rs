@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 use walkdir::WalkDir;
 
 use crate::{

@@ -9,7 +9,7 @@ use crate::{
     settings::{NIX_STORE_PATH, NIX_VERSION, NSS_CACERT_STORE_PATH},
 };
 
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use crate::action::{Action, ActionDescription};
 

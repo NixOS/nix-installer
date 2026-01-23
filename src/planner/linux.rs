@@ -5,16 +5,16 @@ use std::process::Command;
 
 use super::ShellProfileLocations;
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::{CreateDirectory, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
-        linux::{provision_selinux::SELINUX_POLICY_PP_CONTENT, ProvisionSelinux},
-        StatefulAction,
+        linux::{ProvisionSelinux, provision_selinux::SELINUX_POLICY_PP_CONTENT},
     },
     error::HasExpectedErrors,
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSettings, InitSystem, InstallSettingsError},
-    Action, BuiltinPlanner,
 };
 
 pub const FHS_SELINUX_POLICY_PATH: &str = "/usr/share/selinux/packages/nix.pp";

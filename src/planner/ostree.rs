@@ -1,26 +1,26 @@
 use crate::{
+    Action, BuiltinPlanner,
     action::{
+        StatefulAction,
         base::{CreateDirectory, CreateFile, RemoveDirectory},
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         linux::{
-            provision_selinux::SELINUX_POLICY_PP_CONTENT, ProvisionSelinux, StartSystemdUnit,
-            SystemctlDaemonReload,
+            ProvisionSelinux, StartSystemdUnit, SystemctlDaemonReload,
+            provision_selinux::SELINUX_POLICY_PP_CONTENT,
         },
-        StatefulAction,
     },
     error::HasExpectedErrors,
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
-    Action, BuiltinPlanner,
 };
 use std::{collections::HashMap, path::PathBuf};
 
 use super::{
+    ShellProfileLocations,
     linux::{
         check_nix_not_already_installed, check_not_nixos, check_not_wsl1, check_systemd_active,
         detect_selinux,
     },
-    ShellProfileLocations,
 };
 
 /// A planner suitable for immutable systems using ostree, such as Fedora Silverblue

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::process::Command;
-use tracing::{span, Span};
+use tracing::{Span, span};
 
 use std::{
     path::{Path, PathBuf},
@@ -11,14 +11,14 @@ use std::{
 
 use crate::{
     action::{
-        macos::DARWIN_LAUNCHD_DOMAIN, Action, ActionDescription, ActionError, ActionErrorKind,
-        ActionTag, StatefulAction,
+        Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction,
+        macos::DARWIN_LAUNCHD_DOMAIN,
     },
     execute_command,
     util::OnMissing,
 };
 
-use super::{get_disk_info_for_label, KEYCHAIN_NIX_STORE_SERVICE};
+use super::{KEYCHAIN_NIX_STORE_SERVICE, get_disk_info_for_label};
 
 /** Create a plist for a `launchctl` service to mount the given `apfs_volume_label` on the given `mount_point`.
  */
@@ -197,7 +197,7 @@ impl Action for CreateVolumeService {
             None => {
                 return Err(Self::error(CreateVolumeServiceError::CannotDetermineUuid(
                     apfs_volume_label.to_string(),
-                )))
+                )));
             },
         };
         let generated_plist = generate_mount_plist(
@@ -253,7 +253,9 @@ fn generate_mount_plist(
     // The official Nix scripts uppercase the UUID, so we do as well for compatibility.
     let uuid_string = uuid.to_uppercase();
     let mount_command = if encrypt {
-        let encrypted_command = format!("/usr/bin/security find-generic-password -a {apfs_volume_label_with_quotes} -s {nix_store_with_quotes} -w | /usr/sbin/diskutil apfs unlockVolume {apfs_volume_label_with_quotes} -mountpoint {mount_point:?} -stdinpassphrase");
+        let encrypted_command = format!(
+            "/usr/bin/security find-generic-password -a {apfs_volume_label_with_quotes} -s {nix_store_with_quotes} -w | /usr/sbin/diskutil apfs unlockVolume {apfs_volume_label_with_quotes} -mountpoint {mount_point:?} -stdinpassphrase"
+        );
         vec!["/bin/sh".into(), "-c".into(), encrypted_command]
     } else {
         vec![
@@ -293,7 +295,9 @@ pub enum CreateVolumeServiceError {
     },
     #[error("UUID for APFS volume labelled `{0}` was not found")]
     CannotDetermineUuid(String),
-    #[error("An APFS volume labelled `{1}` does not exist, but there exists an fstab entry for that volume, as well as a service file at `{0}`. Consider removing the line containing `/nix` from the `/etc/fstab` and running `sudo rm {0}`")]
+    #[error(
+        "An APFS volume labelled `{1}` does not exist, but there exists an fstab entry for that volume, as well as a service file at `{0}`. Consider removing the line containing `/nix` from the `/etc/fstab` and running `sudo rm {0}`"
+    )]
     VolumeDoesNotExistButVolumeServiceAndFstabEntryDoes(PathBuf, String),
 }
 
