@@ -114,11 +114,30 @@
           cacertStorePath = tarballPkg.passthru.cacertStorePath;
           nixVersion = tarballPkg.passthru.nixVersion;
           sharedAttrs = {
-            src = builtins.path {
-              name = "nix-installer-source";
-              path = self;
-              filter = (path: type: baseNameOf path != "nix" && baseNameOf path != ".github");
-            };
+            src =
+              let
+                excludedNames = [
+                  ".github"
+                  "nix"
+                  "docs"
+                  "scripts"
+                  "flake.lock"
+                ];
+                excludedSuffixes = [
+                  ".md"
+                  ".nix"
+                ];
+                name = path: baseNameOf path;
+                isExcluded =
+                  path: type:
+                  builtins.elem (name path) excludedNames
+                  || builtins.any (suffix: pkgs.lib.hasSuffix suffix (name path)) excludedSuffixes;
+              in
+              builtins.path {
+                name = "nix-installer-source";
+                path = self;
+                filter = path: type: !isExcluded path type;
+              };
 
             nativeBuildInputs = [ tarballPkg ];
 
