@@ -13,9 +13,9 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Nix from latest release
-        uses: ./
+        uses: NixOS/nix-installer-action@main
         with:
-          no-init: true
+          init: no
           add-channel: true
 
       - name: Verify Nix installation

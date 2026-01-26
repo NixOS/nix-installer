@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Install Nix
-        uses: ./
+        uses: NixOS/nix-installer-action@main
       - name: Setup Cachix
         uses: cachix/cachix-action@v16
         with:
