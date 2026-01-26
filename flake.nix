@@ -225,7 +225,7 @@
         in
         {
           default = pkgs.mkShell {
-            name = "nix-install-shell";
+            name = "nix-install";
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
             NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
@@ -236,15 +236,10 @@
             buildInputs =
               with pkgs;
               [
-                # Rust development
                 rustc
                 cargo
                 clippy
                 rust-analyzer
-                cargo-outdated
-                cargo-semver-checks
-                # cargo-audit # NOTE(cole-h): build currently broken because of time dependency and Rust 1.80
-                cargo-watch
                 cacert
 
                 # treefmt (for `nix fmt` and manual formatting)
