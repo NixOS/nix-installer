@@ -217,28 +217,29 @@ Omitting this will negatively impact compatibility with container tools like [Po
 
 ### In GitHub Actions
 
-This repository provides a GitHub Action for installing Nix in CI workflows.
+[The nix installer action repository](https://github.com/NixOS/nix-installer-action/) provides a GitHub Action for installing Nix in CI workflows.
+It uses this installer under the hood.
 
 **Basic usage:**
 ```yaml
-- uses: NixOS/nix-installer@main
+- uses: NixOS/nix-installer-action@main
 ```
 
 **Install specific version:**
 ```yaml
-- uses: NixOS/nix-installer@main
+- uses: NixOS/nix-installer-action@main
   with:
     installer-version: v3.11.3-experimental-prerelease
 ```
 
 **No-init mode (for containers):**
 ```yaml
-- uses: NixOS/nix-installer@main
+- uses: NixOS/nix-installer-action@main
   with:
-    no-init: true
+    init: "no"
 ```
 
-See the [action inputs](action.yml) for all available options.
+See the [action inputs](https://github.com/NixOS/nix-installer-action/tree/main?tab=readme-ov-file#inputs) for all available options.
 
 ### In WSL2
 
