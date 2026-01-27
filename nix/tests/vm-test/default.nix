@@ -194,13 +194,22 @@ let
       uninstallCheck = installCases.install-default.uninstallCheck;
     };
   };
+  # For cure-self tests, we need to remove Nix from PATH before running the installer.
+  # The initial install modifies shell profiles, so subsequent SSH commands have Nix in PATH.
+  # This causes the installer's "nix already exists" check to fail.
+  # We use env -i to run with a minimal environment, then restore essential variables.
+  nix-installer-cure-install = ''
+    # Run installer with PATH that excludes Nix directories
+    PATH=$(echo "$PATH" | tr ':' '\n' | grep -v nix | tr '\n' ':' | sed 's/:$//') \
+    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=trace
+  '';
   cureSelfCases = {
     cure-self-linux-working = {
       preinstall = ''
         ${nix-installer-install-quiet}
         sudo mv /nix/receipt.json /nix/old-receipt.json
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -211,6 +220,7 @@ let
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo rm -rf /nix/
       '';
+      # This test removes /nix entirely, so nix-env won't be found anyway
       install = installCases.install-default.install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
@@ -224,7 +234,7 @@ let
         sudo userdel nixbld3
         sudo userdel nixbld16
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -238,7 +248,7 @@ let
         done
         sudo groupdel nixbld
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -249,7 +259,7 @@ let
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo systemctl disable --now nix-daemon.socket
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -260,7 +270,7 @@ let
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo systemctl stop nix-daemon.socket
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -271,7 +281,7 @@ let
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo rm -rf /etc/nix
       '';
-      install = installCases.install-default.install;
+      install = nix-installer-cure-install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
@@ -282,6 +292,7 @@ let
         sudo mv /nix/receipt.json /nix/old-receipt.json
         sudo sed -i '/# Nix/,/# End Nix/d' /etc/bash.bashrc
       '';
+      # This test removes the Nix snippet from bash.bashrc, so Nix won't be in PATH
       install = installCases.install-default.install;
       check = installCases.install-default.check;
       uninstall = installCases.install-default.uninstall;
