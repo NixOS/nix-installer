@@ -122,7 +122,6 @@
                 ./build.rs
                 ./src
                 ./tests
-                ./.cargo
                 ./nix-installer.sh
                 ./rustfmt.toml
                 ./rust-toolchain.toml
