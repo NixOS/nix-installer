@@ -99,7 +99,4 @@ eyre = { version = "0.6.8", default-features = false, features = [
 [profile.release]
 strip = true    # Automatically strip symbols from the binary.
 opt-level = "z" # Optimize for size.
-
-# Disabled for now while we are in experimental phase
-# This gives maybe 10% smaller binaries but increases compile time significantly.
-# lto = true
+lto = true
