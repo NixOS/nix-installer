@@ -17,11 +17,8 @@ If you used the **Determinate Nix Installer**, report issues at https://github.c
 This one-liner is the quickest way to get started on any supported system:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ```
-
-
 
 | Platform                                                             |    Multi user?    | `root` only |     Maturity      |
 | -------------------------------------------------------------------- | :---------------: | :---------: | :---------------: |
@@ -37,8 +34,7 @@ curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installe
 You can install Nix with the default [planner](#planners) and options by running this script:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ```
 
 To download a platform-specific installer binary yourself:
@@ -70,8 +66,7 @@ To see the options for Linux, for example:
 You can configure planners using environment variables or command arguments:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  NIX_BUILD_GROUP_NAME=nixbuilder sh -s -- install --nix-build-group-id 4000
+curl -sSfL https://artifacts.nixos.org/nix-installer | NIX_BUILD_GROUP_NAME=nixbuilder sh -s -- install --nix-build-group-id 4000
 
 # Alternatively:
 
@@ -113,7 +108,7 @@ On the default [GitLab] runners, you can install Nix using this configuration:
 ```yaml
 test:
   script:
-    - curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- install linux --no-confirm --init none
+    - curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --no-confirm --init none
     - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
     - nix run nixpkgs#hello
     - nix profile install nixpkgs#hello
@@ -134,8 +129,7 @@ If you are using different runners, the above example may need to be adjusted.
 If you don't use [systemd], you can still install Nix by explicitly specifying the `linux` plan and `--init none`:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install linux --init none
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --init none
 ```
 
 ### In a container
@@ -169,10 +163,8 @@ For containers (without an init):
 FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl -y
-RUN curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" \
-  --init none \
-  --no-confirm
+RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
+  --extra-conf "sandbox = false" --init none --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 ```
@@ -194,10 +186,8 @@ For containers with a [systemd] init:
 FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl systemd -y
-RUN curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" \
-  --no-start-daemon \
-  --no-confirm
+RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
+  --extra-conf "sandbox = false" --no-start-daemon --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 CMD [ "/bin/systemd" ]
@@ -246,8 +236,7 @@ See the [action inputs](https://github.com/NixOS/nix-installer-action/tree/main?
 We **strongly recommend** first [enabling systemd][enabling-systemd] and then installing Nix as normal:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ```
 
 If [WSLg][wslg] is enabled, you can do things like open a Linux Firefox from Windows on Powershell:
@@ -272,8 +261,7 @@ If enabling systemd is not an option, pass `--init none` at the end of the comma
 > ```
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install linux --init none
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --init none
 ```
 
 ### Skip confirmation
@@ -281,8 +269,7 @@ curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installe
 If you'd like to bypass the confirmation step, you can apply the `--no-confirm` flag:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | \
-  sh -s -- install --no-confirm
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --no-confirm
 ```
 
 This is especially useful when using the installer in non-interactive scripts.
@@ -332,8 +319,7 @@ Here's an example:
 
 ```shell
 VERSION="v0.6.0"
-curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer/tag/${VERSION}/nix-installer.sh | \
-  sh -s -- install
+curl -sSfL https://artifacts.nixos.org/nix-installer/tag/${VERSION}/nix-installer.sh | sh -s -- install
 ```
 
 To discover which versions are available, or download the binaries for any release, check the [Github Releases][releases].
