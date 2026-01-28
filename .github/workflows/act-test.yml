@@ -28,6 +28,6 @@ jobs:
           nix run nixpkgs#hello
 
           echo "Testing nix-env install..."
-          nix-env --install hello
+          nix-env -iA nixpkgs.hello
           hello
           nix-env --uninstall hello

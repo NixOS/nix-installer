@@ -210,7 +210,7 @@ jobs:
           set -x
           echo "$PATH"
           nix-shell -p hello --command hello
-          nix-env --install hello
+          nix-env -iA nixpkgs.hello
           hello
           nix-store --gc
           nix-shell -p hello --command hello
@@ -221,7 +221,7 @@ jobs:
         if: ${{ matrix.init == 'no' }}
         run: |
           sudo -i nix-shell -p hello --command hello
-          sudo -i nix-env --install hello
+          sudo -i nix-env -iA nixpkgs.hello
           sudo -i hello
           sudo -i nix-store --gc
           sudo -i nix-shell -p hello --command hello
