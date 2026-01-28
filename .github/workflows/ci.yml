@@ -148,7 +148,6 @@ jobs:
           dogfood: true
           dogfood-path: ${{ steps.download-installer.outputs.download-path }}
           init: ${{ matrix.init }}
-          add-channel: true
           verbosity: 2
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
