@@ -123,6 +123,12 @@ def main() -> None:
     installers: list[tuple[str, str]] = []
     for build_id in hydra_eval["builds"]:
         build = get_build_info(build_id)
+
+        # Only process installer builds, skip tests
+        job_name = build.get("job", "")
+        if not job_name.startswith("build."):
+            continue
+
         installer_url = build["buildoutputs"]["out"]["path"]
         system = build["system"]
 
