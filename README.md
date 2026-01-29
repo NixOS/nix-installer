@@ -10,10 +10,6 @@ If you used the **Determinate Nix Installer**, report issues at https://github.c
 
 ---
 
-[![Crates.io](https://img.shields.io/crates/v/nix-installer)](https://crates.io/crates/nix-installer)
-[![Docs.rs](https://img.shields.io/docsrs/nix-installer)](https://docs.rs/nix-installer/latest/nix_installer)
-
-
 This one-liner is the quickest way to get started on any supported system:
 
 ```shell
@@ -307,11 +303,6 @@ See [this document](./docs/quirks.md) for information on resolving these issues:
 
 See [this guide](./docs/building.md) for instructions on building and distributing the installer yourself.
 
-## As a Rust library
-
-The experimental Nix installer is available as a standard [Rust] library.
-See [this guide](./docs/rust-library.md) for instructions on using the library in your own Rust code.
-
 ## Accessing other versions
 
 You can pin to a specific version of the experimental Nix installer by modifying the download URL.
@@ -438,7 +429,6 @@ nix-installer uninstall /path/to/receipt.json
 [openssl]: https://openssl.org
 [podman]: https://podman.io
 [releases]: https://github.com/NixOS/nix-installer/releases
-[rust]: https://rust-lang.org
 [selinux]: https://selinuxproject.org
 [steam-deck]: https://store.steampowered.com/steamdeck
 [systemd]: https://systemd.io
