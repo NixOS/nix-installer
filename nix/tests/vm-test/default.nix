@@ -193,6 +193,28 @@ let
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
     };
+    # Verifies SUSE-specific profile locations: /etc/bash.bashrc.local is
+    # written during install and cleaned up during uninstall. Also verifies
+    # that /etc/bash.bashrc does NOT contain the Nix snippet (it must be
+    # excluded on SUSE to avoid PATH conflicts with SUSE's /etc/profile
+    # sourcing in bash.bashrc for SSH sessions).
+    install-suse-profile-local = {
+      install = nix-installer-install;
+      check = installCases.install-default.check + ''
+        grep -q "nix-daemon.sh" /etc/bash.bashrc.local
+        if grep -q "nix-daemon.sh" /etc/bash.bashrc; then
+          echo "/etc/bash.bashrc should not contain Nix snippet on SUSE"
+          exit 1
+        fi
+      '';
+      uninstall = installCases.install-default.uninstall;
+      uninstallCheck = installCases.install-default.uninstallCheck + ''
+        if [ -f /etc/bash.bashrc.local ] && grep -q "nix-daemon.sh" /etc/bash.bashrc.local; then
+          echo "/etc/bash.bashrc.local still contains Nix snippet after uninstall"
+          exit 1
+        fi
+      '';
+    };
   };
   # For cure-self tests, we need to remove Nix from PATH before running the installer.
   # The initial install modifies shell profiles, so subsequent SSH commands have Nix in PATH.
@@ -347,6 +369,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "ubuntu-v24_04" = {
@@ -356,6 +379,7 @@ let
       };
       rootDisk = "box_0.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "fedora-v36" = {
@@ -365,6 +389,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "fedora-v37" = {
@@ -374,6 +399,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "rhel-v7" = {
@@ -383,6 +409,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "rhel-v8" = {
@@ -392,6 +419,7 @@ let
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
+      skip = [ "install-suse-profile-local" ];
     };
 
     "rhel-v9" = {
@@ -402,6 +430,16 @@ let
       rootDisk = "box.img";
       system = "x86_64-linux";
       extraQemuOpts = "-cpu Westmere-v2";
+      skip = [ "install-suse-profile-local" ];
+    };
+
+    "opensuse-leap-v15_6" = {
+      image = import <nix/fetchurl.nix> {
+        url = "https://download.opensuse.org/distribution/leap/15.6/appliances/Leap-15.6.x86_64-15.6-libvirt-Build19.53.vagrant.libvirt.box";
+        hash = "sha256-dBem1TOURmFkX80y+aKlJ3OW7hblA5tNYdrTWheuZa4=";
+      };
+      rootDisk = "box.img";
+      system = "x86_64-linux";
     };
 
   };

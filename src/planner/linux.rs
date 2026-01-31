@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use crate::util::which;
 use std::process::Command;
 
-use super::ShellProfileLocations;
+use super::{ShellProfileLocations, get_os_release_id};
 use crate::{
     Action, BuiltinPlanner,
     action::{
@@ -18,6 +18,17 @@ use crate::{
 };
 
 pub const FHS_SELINUX_POLICY_PATH: &str = "/usr/share/selinux/packages/nix.pp";
+
+fn detect_suse() -> bool {
+    get_os_release_id()
+        .map(|id| {
+            matches!(
+                id.as_str(),
+                "sles" | "opensuse-leap" | "opensuse-tumbleweed" | "opensuse-microos"
+            ) || id.starts_with("opensuse-leap-v")
+        })
+        .unwrap_or(false)
+}
 
 /// A planner for traditional, mutable Linux systems like Debian, RHEL, or Arch
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -41,6 +52,24 @@ impl Planner for Linux {
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         let has_selinux = detect_selinux()?;
 
+        let is_suse = detect_suse();
+
+        let mut shell_profile_locations = ShellProfileLocations::default();
+        if is_suse {
+
+            // On SUSE, /etc/bash.bashrc sources /etc/profile for SSH sessions and
+            // rebuilds PATH from scratch. Writing the Nix snippet to /etc/bash.bashrc
+            // causes PATH to lose Nix directories because the idempotency guard in
+            // nix-daemon.sh prevents re-sourcing via /etc/profile.d/nix.sh after PATH
+            // is rebuilt.
+            shell_profile_locations
+                .bash
+                .retain(|p| p != std::path::Path::new("/etc/bash.bashrc"));
+            shell_profile_locations
+                .bash
+                .push("/etc/bash.bashrc.local".into());
+        }
+
         let mut plan = vec![
             CreateDirectory::plan("/nix", None, None, 0o0755, true)
                 .map_err(PlannerError::Action)?
@@ -51,7 +80,7 @@ impl Planner for Linux {
             CreateUsersAndGroups::plan(self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-            ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
+            ConfigureNix::plan(shell_profile_locations, &self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ];
