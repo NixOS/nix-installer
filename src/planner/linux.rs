@@ -5,7 +5,9 @@ use crate::{
     Action, BuiltinPlanner,
     action::{
         StatefulAction,
-        base::{CreateDirectory, RemoveDirectory},
+        base::{
+            CreateDirectory, CreateOrInsertIntoFile, RemoveDirectory, create_or_insert_into_file,
+        },
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         linux::{ProvisionSelinux, provision_selinux::SELINUX_POLICY_PP_CONTENT},
     },
@@ -40,18 +42,33 @@ impl Planner for Linux {
         let has_selinux = detect_selinux()?;
 
         let mut shell_profile_locations = ShellProfileLocations::default();
-        if LinuxDistro::detect() == LinuxDistro::Suse {
-            // On SUSE, /etc/bash.bashrc sources /etc/profile for SSH sessions and
-            // rebuilds PATH from scratch. Writing the Nix snippet to /etc/bash.bashrc
-            // causes PATH to lose Nix directories because the idempotency guard in
-            // nix-daemon.sh prevents re-sourcing via /etc/profile.d/nix.sh after PATH
-            // is rebuilt.
-            shell_profile_locations
-                .bash
-                .retain(|p| p != std::path::Path::new("/etc/bash.bashrc"));
-            shell_profile_locations
-                .bash
-                .push("/etc/bash.bashrc.local".into());
+        match LinuxDistro::detect() {
+            LinuxDistro::Suse => {
+                // On SUSE, /etc/bash.bashrc sources /etc/profile for SSH sessions and
+                // rebuilds PATH from scratch. Writing the Nix snippet to /etc/bash.bashrc
+                // causes PATH to lose Nix directories because the idempotency guard in
+                // nix-daemon.sh prevents re-sourcing via /etc/profile.d/nix.sh after PATH
+                // is rebuilt.
+                shell_profile_locations
+                    .bash
+                    .retain(|p| p != std::path::Path::new("/etc/bash.bashrc"));
+                shell_profile_locations
+                    .bash
+                    .push("/etc/bash.bashrc.local".into());
+            },
+            LinuxDistro::Arch => {
+                // On Arch Linux, /etc/bash.bashrc starts with `[[ $- != *i* ]] && return`
+                // which prevents the Nix snippet from running in non-interactive shells
+                // (e.g. `ssh host 'command'`). Writing to /etc/bash.bashrc still works for
+                // interactive sessions, but we also need /etc/profile.d/nix.sh (already in
+                // defaults) for login shells. For non-interactive non-login shells (SSH
+                // command mode), we set BASH_ENV in /etc/environment.d/ so bash sources the
+                // Nix profile automatically.
+                shell_profile_locations
+                    .bash
+                    .retain(|p| p != std::path::Path::new("/etc/bash.bashrc"));
+            },
+            _ => {},
         }
 
         let mut plan = vec![
@@ -68,6 +85,26 @@ impl Planner for Linux {
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ];
+
+        if LinuxDistro::detect() == LinuxDistro::Arch {
+            // On Arch, /etc/bash.bashrc guards non-interactive shells with
+            // `[[ $- != *i* ]] && return`, so the Nix snippet we prepend there
+            // never runs for `ssh host 'command'` (non-interactive, non-login).
+            // Setting BASH_ENV in /etc/environment (read by PAM for all sessions)
+            // makes bash source the Nix profile in every session type.
+            plan.push(
+                CreateOrInsertIntoFile::plan(
+                    "/etc/environment",
+                    None,
+                    None,
+                    0o644,
+                    "\n# Nix\nBASH_ENV=/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh\n# End Nix\n".to_string(),
+                    create_or_insert_into_file::Position::End,
+                )
+                .map_err(PlannerError::Action)?
+                .boxed(),
+            );
+        }
 
         if has_selinux {
             plan.push(

@@ -209,6 +209,16 @@ let
               exit 1
             fi
             ;;
+          arch)
+            # On Arch, /etc/bash.bashrc has a non-interactive guard that makes
+            # appended snippets dead code for SSH command mode. The installer
+            # skips bash.bashrc and sets BASH_ENV in /etc/environment instead.
+            grep -q "BASH_ENV.*nix-daemon.sh" /etc/environment
+            if grep -q "nix-daemon.sh" /etc/bash.bashrc; then
+              echo "/etc/bash.bashrc should not contain Nix snippet on Arch"
+              exit 1
+            fi
+            ;;
           *)
             grep -q "nix-daemon.sh" /etc/bash.bashrc
             if [ -f /etc/bash.bashrc.local ] && grep -q "nix-daemon.sh" /etc/bash.bashrc.local; then
@@ -222,6 +232,10 @@ let
       uninstallCheck = installCases.install-default.uninstallCheck + ''
         if [ -f /etc/bash.bashrc.local ] && grep -q "nix-daemon.sh" /etc/bash.bashrc.local; then
           echo "/etc/bash.bashrc.local still contains Nix snippet after uninstall"
+          exit 1
+        fi
+        if grep -q "nix-daemon.sh" /etc/environment 2>/dev/null; then
+          echo "/etc/environment still contains Nix BASH_ENV after uninstall"
           exit 1
         fi
       '';
@@ -368,8 +382,6 @@ let
       };
     };
 
-  disableSELinux = "sudo setenforce 0";
-
   images = {
 
     # End of standard support https://wiki.ubuntu.com/Releases
@@ -446,20 +458,65 @@ let
       system = "x86_64-linux";
     };
 
+    # Official Arch Linux cloud image from https://geo.mirror.pkgbuild.com/images/
+    # Built by https://gitlab.archlinux.org/archlinux/arch-boxes
+    # Uses virt-customize to inject vagrant user + SSH key since the cloud
+    # image relies on cloud-init (which we disable) and OpenSSH 10.x
+    # disables password auth by default.
+    "archlinux-v20260115" = {
+      image = import <nix/fetchurl.nix> {
+        url = "https://geo.mirror.pkgbuild.com/images/v20260115.482142/Arch-Linux-x86_64-cloudimg-20260115.482142.qcow2";
+        hash = "sha256-kYz1wyQZmkNgmPJv+BnMqCDLrejCChJ29BE0yzM77uM=";
+      };
+      extraBuildInputs = pkgs: [ pkgs.guestfs-tools ];
+      setupScript = ''
+        echo "Preparing Arch Linux cloud image..."
+        cp "$image" ./disk.qcow2
+        chmod 644 ./disk.qcow2
+        qemu-img resize ./disk.qcow2 20G
+
+        vagrant_pubkey="$(ssh-keygen -y -f ./vagrant_insecure_key)"
+        virt-customize -a ./disk.qcow2 --no-network \
+          --run-command 'useradd -m -G wheel -s /bin/bash vagrant' \
+          --run-command 'mkdir -p /home/vagrant/.ssh' \
+          --run-command "echo '$vagrant_pubkey' > /home/vagrant/.ssh/authorized_keys" \
+          --run-command 'chmod 700 /home/vagrant/.ssh' \
+          --run-command 'chmod 600 /home/vagrant/.ssh/authorized_keys' \
+          --run-command 'chown -R vagrant:vagrant /home/vagrant/.ssh' \
+          --run-command 'echo "vagrant ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/vagrant' \
+          --run-command 'systemctl disable cloud-init-main.service cloud-init-local.service cloud-init-network.service cloud-config.service cloud-final.service' \
+          --run-command 'systemctl disable pacman-init.service systemd-time-wait-sync.service || true' \
+          --run-command 'systemctl enable sshd.service || true' \
+          --run-command 'systemctl enable systemd-networkd.service || true' \
+          --run-command 'systemctl enable systemd-resolved.service || true' \
+          --run-command 'touch /etc/machine-id' \
+          --run-command 'ssh-keygen -A' \
+          --write '/etc/systemd/network/20-ethernet.network:[Match]
+        Name=eth0
+
+        [Network]
+        DHCP=yes
+        '
+      '';
+      system = "x86_64-linux";
+    };
+
   };
 
   makeTest =
     imageName: testName: test:
     let
       image = images.${imageName};
+      pkgs = forSystem image.system ({ system, pkgs, ... }: pkgs);
     in
-    with (forSystem image.system ({ system, pkgs, ... }: pkgs));
+    with pkgs;
     runCommand "installer-test-${imageName}-${testName}"
       {
         buildInputs = [
           qemu_kvm
           openssh
-        ];
+        ]
+        ++ (if image ? extraBuildInputs then image.extraBuildInputs pkgs else [ ]);
         image = image.image;
         postBoot = image.postBoot or "";
         preinstallScript = test.preinstall or "echo \"Not Applicable\"";
@@ -473,12 +530,24 @@ let
       ''
         shopt -s nullglob
 
-        echo "Unpacking Vagrant box $image..."
-        tar xvf $image
+        if ! [ -e ./vagrant_insecure_key ]; then
+          cp ${./vagrant_insecure_key} vagrant_insecure_key
+        fi
+        chmod 0400 ./vagrant_insecure_key
 
-        image_type=$(qemu-img info ${image.rootDisk} | sed 's/file format: \(.*\)/\1/; t; d')
+        ${
+          if (image.setupScript or "") != "" then
+            image.setupScript
+          else
+            ''
+              echo "Unpacking Vagrant box $image..."
+              tar xvf $image
 
-        qemu-img create -b ./${image.rootDisk} -F "$image_type" -f qcow2 ./disk.qcow2
+              image_type=$(qemu-img info ${image.rootDisk or "box.img"} | sed 's/file format: \(.*\)/\1/; t; d')
+
+              qemu-img create -b ./${image.rootDisk or "box.img"} -F "$image_type" -f qcow2 ./disk.qcow2
+            ''
+        }
 
         extra_qemu_opts="${image.extraQemuOpts or ""}"
 
@@ -490,17 +559,12 @@ let
 
         echo "Starting qemu..."
         qemu-kvm -m 4096 -nographic \
+          -device virtio-rng-pci \
           -drive id=disk1,file=./disk.qcow2,if=virtio \
           -netdev user,id=net0,restrict=yes,hostfwd=tcp::20022-:22 -device virtio-net-pci,netdev=net0 \
           $extra_qemu_opts &
         qemu_pid=$!
         trap "kill $qemu_pid" EXIT
-
-        if ! [ -e ./vagrant_insecure_key ]; then
-          cp ${./vagrant_insecure_key} vagrant_insecure_key
-        fi
-
-        chmod 0400 ./vagrant_insecure_key
 
         ssh_opts="-o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedKeyTypes=+ssh-rsa -i ./vagrant_insecure_key"
         ssh="ssh -p 20022 -q $ssh_opts vagrant@localhost"
