@@ -112,6 +112,7 @@ static DISTRO: OnceLock<LinuxDistro> = OnceLock::new();
 /// Linux distribution family, detected once from `/etc/os-release`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LinuxDistro {
+    Arch,
     Suse,
     SteamOS,
     Other,
@@ -122,6 +123,7 @@ impl LinuxDistro {
     /// The result is cached for the lifetime of the process.
     pub(crate) fn detect() -> Self {
         *DISTRO.get_or_init(|| match get_os_release_id().as_deref() {
+            Some("arch") => Self::Arch,
             Some("steamos") => Self::SteamOS,
             Some("sles" | "opensuse-leap" | "opensuse-tumbleweed" | "opensuse-microos") => {
                 Self::Suse
