@@ -105,11 +105,35 @@ pub mod macos;
 pub mod ostree;
 pub mod steam_deck;
 
-use std::{collections::HashMap, path::PathBuf, string::FromUtf8Error};
+use std::{collections::HashMap, path::PathBuf, string::FromUtf8Error, sync::OnceLock};
 
-/// Parse the ID field from /etc/os-release
-fn get_os_release_id() -> Option<String> {
-    let content = std::fs::read_to_string("/etc/os-release").ok()?;
+static DISTRO: OnceLock<LinuxDistro> = OnceLock::new();
+
+/// Linux distribution family, detected once from `/etc/os-release`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LinuxDistro {
+    Suse,
+    SteamOS,
+    Other,
+}
+
+impl LinuxDistro {
+    /// Detect the Linux distribution family from `/etc/os-release`.
+    /// The result is cached for the lifetime of the process.
+    pub(crate) fn detect() -> Self {
+        *DISTRO.get_or_init(|| match get_os_release_id().as_deref() {
+            Some("steamos") => Self::SteamOS,
+            Some("sles" | "opensuse-leap" | "opensuse-tumbleweed" | "opensuse-microos") => {
+                Self::Suse
+            },
+            Some(other) if other.starts_with("opensuse-") => Self::Suse,
+            _ => Self::Other,
+        })
+    }
+}
+
+/// Parse the ID field from os-release content.
+fn parse_os_release_id(content: &str) -> Option<String> {
     for line in content.lines() {
         if let Some(value) = line.strip_prefix("ID=") {
             let value = value.trim();
@@ -125,6 +149,12 @@ fn get_os_release_id() -> Option<String> {
         }
     }
     None
+}
+
+/// Read and parse the ID field from /etc/os-release.
+fn get_os_release_id() -> Option<String> {
+    let content = std::fs::read_to_string("/etc/os-release").ok()?;
+    parse_os_release_id(&content)
 }
 
 use serde::{Deserialize, Serialize};
@@ -215,10 +245,7 @@ impl BuiltinPlanner {
     }
 
     fn detect_linux_distro() -> Result<Self, PlannerError> {
-        let is_steam_deck = get_os_release_id()
-            .map(|id| id == "steamos")
-            .unwrap_or(false);
-        if is_steam_deck {
+        if LinuxDistro::detect() == LinuxDistro::SteamOS {
             return Ok(Self::SteamDeck(steam_deck::SteamDeck::try_default()?));
         }
 
@@ -459,5 +486,53 @@ impl HasExpectedErrors for PlannerError {
             this @ PlannerError::Wsl1 => Some(Box::new(this)),
             PlannerError::Command(_, _) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_os_release_id;
+
+    #[test]
+    fn parse_unquoted_id() {
+        assert_eq!(
+            parse_os_release_id("ID=opensuse-leap"),
+            Some("opensuse-leap".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_double_quoted_id() {
+        assert_eq!(parse_os_release_id("ID=\"sles\""), Some("sles".to_string()));
+    }
+
+    #[test]
+    fn parse_single_quoted_id() {
+        assert_eq!(
+            parse_os_release_id("ID='opensuse-leap'"),
+            Some("opensuse-leap".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_missing_id() {
+        assert_eq!(
+            parse_os_release_id("NAME=openSUSE Leap\nVERSION=15.6"),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_multiline_os_release() {
+        let content = "\
+NAME=\"openSUSE Leap\"
+VERSION=\"15.6\"
+ID=opensuse-leap
+ID_LIKE=\"suse opensuse\"
+VERSION_ID=\"15.6\"";
+        assert_eq!(
+            parse_os_release_id(content),
+            Some("opensuse-leap".to_string())
+        );
     }
 }

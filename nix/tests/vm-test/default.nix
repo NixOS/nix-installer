@@ -193,6 +193,39 @@ let
       uninstall = installCases.install-default.uninstall;
       uninstallCheck = installCases.install-default.uninstallCheck;
     };
+    # On SUSE, the Nix snippet must go to /etc/bash.bashrc.local (not
+    # /etc/bash.bashrc) to avoid PATH conflicts with SUSE's /etc/profile
+    # sourcing in bash.bashrc for SSH sessions. On other distros,
+    # /etc/bash.bashrc should have the snippet and .local must not exist.
+    install-shell-profile-locations = {
+      install = nix-installer-install;
+      check = installCases.install-default.check + ''
+        . /etc/os-release
+        case "$ID" in
+          sles|opensuse-*)
+            grep -q "nix-daemon.sh" /etc/bash.bashrc.local
+            if grep -q "nix-daemon.sh" /etc/bash.bashrc; then
+              echo "/etc/bash.bashrc should not contain Nix snippet on SUSE"
+              exit 1
+            fi
+            ;;
+          *)
+            grep -q "nix-daemon.sh" /etc/bash.bashrc
+            if [ -f /etc/bash.bashrc.local ] && grep -q "nix-daemon.sh" /etc/bash.bashrc.local; then
+              echo "/etc/bash.bashrc.local should not exist on non-SUSE"
+              exit 1
+            fi
+            ;;
+        esac
+      '';
+      uninstall = installCases.install-default.uninstall;
+      uninstallCheck = installCases.install-default.uninstallCheck + ''
+        if [ -f /etc/bash.bashrc.local ] && grep -q "nix-daemon.sh" /etc/bash.bashrc.local; then
+          echo "/etc/bash.bashrc.local still contains Nix snippet after uninstall"
+          exit 1
+        fi
+      '';
+    };
   };
   # For cure-self tests, we need to remove Nix from PATH before running the installer.
   # The initial install modifies shell profiles, so subsequent SSH commands have Nix in PATH.
@@ -402,6 +435,15 @@ let
       rootDisk = "box.img";
       system = "x86_64-linux";
       extraQemuOpts = "-cpu Westmere-v2";
+    };
+
+    "opensuse-leap-v15_6" = {
+      image = import <nix/fetchurl.nix> {
+        url = "https://download.opensuse.org/distribution/leap/15.6/appliances/Leap-15.6.x86_64-15.6-libvirt-Build19.53.vagrant.libvirt.box";
+        hash = "sha256-dBem1TOURmFkX80y+aKlJ3OW7hblA5tNYdrTWheuZa4=";
+      };
+      rootDisk = "box.img";
+      system = "x86_64-linux";
     };
 
   };
