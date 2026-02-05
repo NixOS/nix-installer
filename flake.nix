@@ -283,27 +283,23 @@
           vmTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
             nixpkgs.lib.concatMapAttrs (
               distroName: distroTests:
-              if distroName == "all" then
-                nixpkgs.lib.mapAttrs' (
-                  category: test: nixpkgs.lib.nameValuePair "vm-test-all-${category}" test
-                ) distroTests.x86_64-linux
-              else
+              if distroName != "all" then
                 nixpkgs.lib.mapAttrs' (
                   testName: test: nixpkgs.lib.nameValuePair "vm-test-${distroName}-${testName}" test
                 ) distroTests.x86_64-linux
+              else
+                { }
             ) vmTests
           );
           containerTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
             nixpkgs.lib.concatMapAttrs (
               distroName: distroTests:
-              if distroName == "all" then
-                nixpkgs.lib.mapAttrs' (
-                  runtime: test: nixpkgs.lib.nameValuePair "container-test-all-${runtime}" test
-                ) distroTests.x86_64-linux
-              else
+              if distroName != "all" then
                 nixpkgs.lib.mapAttrs' (
                   runtime: test: nixpkgs.lib.nameValuePair "container-test-${distroName}-${runtime}" test
                 ) distroTests.x86_64-linux
+              else
+                { }
             ) containerTests
           );
         in
