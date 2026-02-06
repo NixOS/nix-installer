@@ -274,6 +274,34 @@
           versionParts = ver: builtins.match "([0-9]+)\\.([0-9]+).*" ver;
           installerMajorMinor = versionParts installerVersion;
           nixMajorMinor = versionParts nixVersion;
+
+          vmTests = import ./nix/tests/vm-test {
+            inherit forSystem;
+            inherit (nixpkgs) lib;
+          };
+          containerTests = import ./nix/tests/container-test { inherit forSystem; };
+          vmTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
+            nixpkgs.lib.concatMapAttrs (
+              distroName: distroTests:
+              if distroName != "all" then
+                nixpkgs.lib.mapAttrs' (
+                  testName: test: nixpkgs.lib.nameValuePair "vm-test-${distroName}-${testName}" test
+                ) distroTests.x86_64-linux
+              else
+                { }
+            ) vmTests
+          );
+          containerTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
+            nixpkgs.lib.concatMapAttrs (
+              distroName: distroTests:
+              if distroName != "all" then
+                nixpkgs.lib.mapAttrs' (
+                  runtime: test: nixpkgs.lib.nameValuePair "container-test-${distroName}-${runtime}" test
+                ) distroTests.x86_64-linux
+              else
+                { }
+            ) containerTests
+          );
         in
         {
           # treefmt handles: rustfmt, nixfmt, shfmt, shellcheck, typos, taplo, yamlfmt, actionlint, editorconfig
@@ -290,6 +318,8 @@
 
           inherit (craneBuilds) clippy;
         }
+        // vmTestChecks
+        // containerTestChecks
       );
 
       packages = forAllSystems (
@@ -328,13 +358,6 @@
 
       hydraJobs = {
         build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
-        vm-test = import ./nix/tests/vm-test {
-          inherit forSystem;
-          inherit (nixpkgs) lib;
-        };
-        container-test = import ./nix/tests/container-test {
-          inherit forSystem;
-        };
       };
     };
 }

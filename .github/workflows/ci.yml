@@ -249,41 +249,31 @@ jobs:
             exit 1
           fi
 
-  release-checks:
-    name: Run release checks
+  vm-tests:
+    name: VM Tests - ${{ matrix.distro }}
     if: ${{ contains(github.ref, 'release-') || contains(github.head_ref, 'release-') }}
-
     needs: [build, lints]
-
     runs-on: ubuntu-24.04
-
-    env:
-      SYSTEM: x86_64-linux
-
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu-v22_04
+          - ubuntu-v24_04
+          - fedora-v36
+          - fedora-v37
+          - rhel-v7
+          - rhel-v8
+          - rhel-v9
+          - opensuse-leap-v15_6
+          - archlinux-v20260115
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Restore Github cache artifacts
-        id: download-installer
-        uses: actions/download-artifact@v7
-        with:
-          name: nix-installer-${{ env.SYSTEM }}
-          path: install-root/
-
-      - name: Set installer components as executable
-        env:
-          INSTALL_ROOT: ${{ steps.download-installer.outputs.download-path }}
-        run: |
-          find "$INSTALL_ROOT" -type f -exec chmod +x {} +
-
-      - name: Initial install
+      - name: Install Nix
         uses: NixOS/nix-installer-action@main
         with:
-          dogfood: true
-          dogfood-path: ${{ steps.download-installer.outputs.download-path }}
-          add-channel: true
-          verbosity: 2
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
@@ -293,10 +283,36 @@ jobs:
           name: nix-installer
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - run: nix flake check -L
-      - run: |
-          nix build \
-            -L --tarball-ttl 0 --keep-going \
-            .#hydraJobs.container-test.all.x86_64-linux.all \
-            .#hydraJobs.vm-test.all.x86_64-linux.all
+      - name: Run VM tests for ${{ matrix.distro }}
+        run: nix build .#checks.x86_64-linux.vm-test-${{ matrix.distro }}-all -L
+
+  container-tests:
+    name: Container Tests - ${{ matrix.distro }}
+    if: ${{ contains(github.ref, 'release-') || contains(github.head_ref, 'release-') }}
+    needs: [build, lints]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu-v22_04
+          - ubuntu-v24_04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: NixOS/nix-installer-action@main
+        with:
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v16
+        with:
+          name: nix-installer
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
+      - name: Run container tests for ${{ matrix.distro }}
+        run: nix build .#checks.x86_64-linux.container-test-${{ matrix.distro }}-all -L
 
