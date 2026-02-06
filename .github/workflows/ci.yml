@@ -251,7 +251,6 @@ jobs:
 
   vm-tests:
     name: VM Tests - ${{ matrix.distro }}
-    if: ${{ contains(github.ref, 'release-') || contains(github.head_ref, 'release-') }}
     needs: [build, lints]
     runs-on: ubuntu-24.04
     strategy:
@@ -288,7 +287,6 @@ jobs:
 
   container-tests:
     name: Container Tests - ${{ matrix.distro }}
-    if: ${{ contains(github.ref, 'release-') || contains(github.head_ref, 'release-') }}
     needs: [build, lints]
     runs-on: ubuntu-24.04
     strategy:
