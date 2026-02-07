@@ -1,12 +1,16 @@
-# Experimental Nix Installer
+# Nix Installer
 
-Note, this is different from the Determinate Nix Installer, available at https://github.com/DeterminateSystems/nix-installer.
+Status: Beta
 
-## If you're having a problem with installing Nix, this repository is almost certainly the wrong place to record issues.
+This is the official Nix installer maintained by the NixOS community. It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [`nixos.org/nix/install`](https://nixos.org/nix/install) shell script bundled with Nix.
 
-If you used the **official Nix install scripts**, report issues at https://github.com/NixOS/nix/issues.
+## If you're having a problem with installing Nix, make sure to report issues in the right place.
+
+If you used `sh <(curl -L https://nixos.org/nix/install)`, report issues at https://github.com/NixOS/nix/issues.
 
 If you used the **Determinate Nix Installer**, report issues at https://github.com/DeterminateSystems/nix-installer.
+
+If you used **this installer**, report issues at https://github.com/NixOS/nix-installer/issues.
 
 ---
 
@@ -45,7 +49,7 @@ This would install Nix on an `x86_64-linux` system but you can replace that with
 
 ### Planners
 
-The experimental Nix installer installs Nix by following a _plan_ made by a _planner_.
+The Nix installer installs Nix by following a _plan_ made by a _planner_.
 To review the available planners:
 
 ```shell
@@ -88,7 +92,7 @@ Alternatively, you can [uninstall](#uninstalling) and [reinstall](#install-nix) 
 
 ### Uninstalling
 
-You can remove Nix installed by the experimental Nix installer by running:
+You can remove Nix installed by the Nix installer by running:
 
 ```shell
 /nix/nix-installer uninstall
@@ -276,7 +280,7 @@ Existing Nix installation scripts do a good job but they are difficult to mainta
 
 Subtle differences in the shell implementations and tool used in the scripts make it difficult to make meaningful changes to the installer.
 
-The experimental Nix installer has numerous advantages over these options:
+The Nix installer has numerous advantages over these options:
 
 - It keeps an installation _receipt_ for easy [uninstallation](#uninstalling)
 - It uses [planners](#planners) to create appropriate install plans for complicated targets&mdash;plans that you can review prior to installation
@@ -294,7 +298,7 @@ The working group maintains a [foundation-owned fork of the installer][forked-in
 
 ## Quirks
 
-While the experimental Nix Installer tries to provide a comprehensive and unquirky experience, there are unfortunately some issues that may require manual intervention or operator choices.
+While the Nix Installer tries to provide a comprehensive and unquirky experience, there are unfortunately some issues that may require manual intervention or operator choices.
 See [this document](./docs/quirks.md) for information on resolving these issues:
 
 - [Using MacOS after removing Nix while nix-darwin was still installed, network requests fail](./docs/quirks.md#using-macos-after-removing-nix-while-nix-darwin-was-still-installed-network-requests-fail)
@@ -305,7 +309,7 @@ See [this guide](./docs/building.md) for instructions on building and distributi
 
 ## Accessing other versions
 
-You can pin to a specific version of the experimental Nix installer by modifying the download URL.
+You can pin to a specific version of the Nix installer by modifying the download URL.
 Here's an example:
 
 ```shell
@@ -335,14 +339,14 @@ Here are some example Nix package URLs, including the Nix version, OS, and archi
 
 ## Installation differences
 
-Differing from the upstream [Nix][upstream-nix] installer scripts:
+Differing from the [`nixos.org/nix/install`][upstream-nix] script:
 
 * an installation receipt (for uninstalling) is stored at `/nix/receipt.json` as well as a copy of the install binary at `/nix/nix-installer`
 * `ssl-cert-file` is set in `/etc/nix/nix.conf` if the `ssl-cert-file` argument is used.
 
 ## Installer settings
 
-The experimental Nix installer provides a variety of configuration settings, some [general](#general-settings) and some on a per-command basis.
+The Nix installer provides a variety of configuration settings, some [general](#general-settings) and some on a per-command basis.
 All settings are available via flags or via `NIX_INSTALLER_*` environment variables.
 
 ### General settings

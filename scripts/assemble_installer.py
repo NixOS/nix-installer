@@ -91,7 +91,7 @@ def create_release(version: str, release_files: list[str]) -> None:
             "release",
             "create",
             "--notes",
-            f"Release experimental nix installer v{version}",
+            f"Release nix installer v{version}",
             "--title",
             f"v{version}",
             "--draft",
