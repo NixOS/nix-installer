@@ -29,9 +29,9 @@ pub trait CommandExecute {
 }
 
 /**
-Experimental Nix Installer
+Nix Installer
 
-A WIP replacement for the shell-based Nix installer (TODO: better description)
+A tool to install Nix or manage an existing installation.
 */
 #[derive(Debug, Parser)]
 #[clap(version)]
