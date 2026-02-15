@@ -6,7 +6,7 @@
 
     crane.url = "github:ipetkov/crane/v0.20.0";
 
-    nix.url = "github:NixOS/nix/2.33.2";
+    nix.url = "github:NixOS/nix/2.33.3";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
 
@@ -241,8 +241,6 @@
                 with pkgs;
                 [
                   libiconv
-                  darwin.apple_sdk.frameworks.Security
-                  darwin.apple_sdk.frameworks.SystemConfiguration
                 ]
               )
               ++ lib.optionals (pkgs.stdenv.isLinux) (
