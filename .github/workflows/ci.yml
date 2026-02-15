@@ -283,7 +283,26 @@ jobs:
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
       - name: Run VM tests for ${{ matrix.distro }}
-        run: nix build .#checks.x86_64-linux.vm-test-${{ matrix.distro }}-all -L
+        run: |
+          # Build VM tests one at a time to avoid OOM.
+          # Each test spawns a 4 GB QEMU VM; running them in parallel
+          # exceeds the runner's RAM limit.
+          tests=$(nix eval --json '.#checks.x86_64-linux' \
+            --apply 'x: builtins.filter (n:
+              let prefix = "vm-test-${{ matrix.distro }}-"; in
+              builtins.substring 0 (builtins.stringLength prefix) n == prefix
+              && ! builtins.elem n [
+                "vm-test-${{ matrix.distro }}-all"
+                "vm-test-${{ matrix.distro }}-install"
+                "vm-test-${{ matrix.distro }}-cure-self"
+                "vm-test-${{ matrix.distro }}-uninstall"
+              ]
+            ) (builtins.attrNames x)')
+          for test in $(echo "$tests" | jq -r '.[]'); do
+            echo "::group::Building $test"
+            nix build ".#checks.x86_64-linux.$test" -L
+            echo "::endgroup::"
+          done
 
   container-tests:
     name: Container Tests - ${{ matrix.distro }}
