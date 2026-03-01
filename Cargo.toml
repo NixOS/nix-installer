@@ -32,7 +32,7 @@ color-eyre = { version = "0.6.2", default-features = false, features = [
   "capture-spantrace",
   "color-spantrace",
 ], optional = true }
-ctrlc = { version = "3.4", features = ["termination"] }
+ctrlc = { version = "3.5", features = ["termination"] }
 eyre = { version = "0.6.8", default-features = false, features = [
   "track-caller",
 ], optional = true }
