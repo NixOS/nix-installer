@@ -300,6 +300,7 @@ impl NixCommandExt for std::process::Command {
         Ok(self
             .args(["--option", "substitute", "false"])
             .args(["--option", "post-build-hook", ""])
+            .env_remove("NIX_REMOTE")
             .env("HOME", dirs::home_dir().ok_or(super::Error::NoRootHome)?)
             .env(
                 "NIX_SSL_CERT_FILE",

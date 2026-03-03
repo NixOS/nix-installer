@@ -164,24 +164,24 @@ impl Action for ConfigureNix {
     #[tracing::instrument(level = "debug", skip_all)]
     fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
-        if let Some(configure_shell_profile) = &mut self.configure_shell_profile {
-            if let Err(err) = configure_shell_profile.try_revert() {
-                errors.push(err);
-            }
+        if let Some(configure_shell_profile) = &mut self.configure_shell_profile
+            && let Err(err) = configure_shell_profile.try_revert()
+        {
+            errors.push(err);
         }
-        if let Some(place_nix_configuration) = &mut self.place_nix_configuration {
-            if let Err(err) = place_nix_configuration.try_revert() {
-                errors.push(err);
-            }
+        if let Some(place_nix_configuration) = &mut self.place_nix_configuration
+            && let Err(err) = place_nix_configuration.try_revert()
+        {
+            errors.push(err);
         }
         if let Err(err) = self.setup_default_profile.try_revert() {
             errors.push(err);
         }
 
-        if let Some(setup_channels) = &mut self.setup_channels {
-            if let Err(err) = setup_channels.try_revert() {
-                errors.push(err);
-            }
+        if let Some(setup_channels) = &mut self.setup_channels
+            && let Err(err) = setup_channels.try_revert()
+        {
+            errors.push(err);
         }
 
         if errors.is_empty() {

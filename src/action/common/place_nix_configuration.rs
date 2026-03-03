@@ -291,10 +291,10 @@ impl Action for PlaceNixConfiguration {
             errors.push(err);
         }
 
-        if let Some(ref mut standard_config) = self.create_or_merge_standard_nix_config {
-            if let Err(err) = standard_config.try_revert() {
-                errors.push(err);
-            }
+        if let Some(ref mut standard_config) = self.create_or_merge_standard_nix_config
+            && let Err(err) = standard_config.try_revert()
+        {
+            errors.push(err);
         }
 
         if let Err(err) = self.create_directory.try_revert() {

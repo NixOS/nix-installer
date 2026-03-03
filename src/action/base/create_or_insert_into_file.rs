@@ -4,7 +4,7 @@ use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
     util::OnMissing,
 };
-use rand::Rng;
+use rand::RngExt;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
@@ -223,14 +223,12 @@ impl Action for CreateOrInsertIntoFile {
                 ActionErrorKind::Open(temp_file_path.clone(), e)
             }).map_err(Self::error)?;
 
-        if *position == Position::End {
-            if let Some(ref mut orig_file) = orig_file {
-                std::io::copy(orig_file, &mut temp_file)
-                    .map_err(|e| {
-                        ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e)
-                    })
-                    .map_err(Self::error)?;
-            }
+        if *position == Position::End
+            && let Some(ref mut orig_file) = orig_file
+        {
+            std::io::copy(orig_file, &mut temp_file)
+                .map_err(|e| ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e))
+                .map_err(Self::error)?;
         }
 
         temp_file
@@ -238,14 +236,12 @@ impl Action for CreateOrInsertIntoFile {
             .map_err(|e| ActionErrorKind::Write(temp_file_path.clone(), e))
             .map_err(Self::error)?;
 
-        if *position == Position::Beginning {
-            if let Some(ref mut orig_file) = orig_file {
-                std::io::copy(orig_file, &mut temp_file)
-                    .map_err(|e| {
-                        ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e)
-                    })
-                    .map_err(Self::error)?;
-            }
+        if *position == Position::Beginning
+            && let Some(ref mut orig_file) = orig_file
+        {
+            std::io::copy(orig_file, &mut temp_file)
+                .map_err(|e| ActionErrorKind::Copy(path.to_owned(), temp_file_path.to_owned(), e))
+                .map_err(Self::error)?;
         }
 
         let gid = if let Some(group) = group {

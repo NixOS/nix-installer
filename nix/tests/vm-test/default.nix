@@ -491,6 +491,7 @@ let
           --run-command 'systemctl enable systemd-resolved.service || true' \
           --run-command 'touch /etc/machine-id' \
           --run-command 'ssh-keygen -A' \
+          --run-command 'sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/" /etc/default/grub && grub-mkconfig -o /boot/grub/grub.cfg' \
           --write '/etc/systemd/network/20-ethernet.network:[Match]
         Name=eth0
 

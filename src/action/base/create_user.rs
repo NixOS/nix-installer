@@ -327,14 +327,13 @@ fn create_user_macos(name: &str, uid: u32, gid: u32) -> Result<(), ActionErrorKi
     ])
 
     .or_else(|e| {
-        if let ActionErrorKind::CommandOutput { ref output, .. } = e {
-            if output.status.signal() == Some(9) {
+        if let ActionErrorKind::CommandOutput { ref output, .. } = e
+            && output.status.signal() == Some(9) {
                 if !WARNED_USER_HIDDEN.swap(true, std::sync::atomic::Ordering::SeqCst) {
                     tracing::warn!("Failed to automatically mark nixbld users as hidden. See: https://dtr.mn/mark-user-hidden");
                 }
                 return Ok(())
             }
-        }
 
         Err(e)
     })?;

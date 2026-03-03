@@ -7,7 +7,7 @@ use std::{
 };
 
 use nix_config_parser::NixConfig;
-use rand::Rng;
+use rand::RngExt;
 use tracing::{Span, span};
 
 use crate::{

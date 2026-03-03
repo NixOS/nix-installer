@@ -13,7 +13,10 @@ use crate::{
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use super::{
     ShellProfileLocations,
@@ -152,7 +155,7 @@ impl Planner for Ostree {
             .fish
             .vendor_confd_prefixes
             .iter()
-            .position(|v| *v == PathBuf::from("/usr/share/fish/"))
+            .position(|v| v == Path::new("/usr/share/fish/"))
         {
             shell_profile_locations
                 .fish

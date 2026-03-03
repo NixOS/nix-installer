@@ -10,7 +10,7 @@ use crate::{
     execute_command,
     os::darwin::DiskUtilApfsListOutput,
 };
-use rand::Rng;
+use rand::RngExt;
 use std::{
     path::{Path, PathBuf},
     process::Stdio,

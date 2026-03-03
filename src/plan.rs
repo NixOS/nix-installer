@@ -169,14 +169,14 @@ impl InstallPlan {
         // Actions which are parallelizable are represented by "group actions" like CreateUsers
         // The plan itself represents the concept of the sequence of stages.
         for action in actions {
-            if let Some(ref signal) = cancel_signal {
-                if signal.load(Ordering::Relaxed) {
-                    if let Err(err) = self.write_receipt() {
-                        tracing::error!("Error saving receipt: {:?}", err);
-                    }
-
-                    return Err(NixInstallerError::Cancelled);
+            if let Some(ref signal) = cancel_signal
+                && signal.load(Ordering::Relaxed)
+            {
+                if let Err(err) = self.write_receipt() {
+                    tracing::error!("Error saving receipt: {:?}", err);
                 }
+
+                return Err(NixInstallerError::Cancelled);
             }
 
             tracing::info!("Step: {}", action.tracing_synopsis());
@@ -291,14 +291,14 @@ impl InstallPlan {
         // Actions which are parallelizable are represented by "group actions" like CreateUsers
         // The plan itself represents the concept of the sequence of stages.
         for action in actions.iter_mut().rev() {
-            if let Some(ref signal) = cancel_signal {
-                if signal.load(Ordering::Relaxed) {
-                    if let Err(err) = self.write_receipt() {
-                        tracing::error!("Error saving receipt: {:?}", err);
-                    }
-
-                    return Err(NixInstallerError::Cancelled);
+            if let Some(ref signal) = cancel_signal
+                && signal.load(Ordering::Relaxed)
+            {
+                if let Err(err) = self.write_receipt() {
+                    tracing::error!("Error saving receipt: {:?}", err);
                 }
+
+                return Err(NixInstallerError::Cancelled);
             }
 
             tracing::info!("Revert: {}", action.tracing_synopsis());

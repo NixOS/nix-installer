@@ -13,7 +13,7 @@ use crate::{
 use clap::{ArgAction, Parser};
 use color_eyre::eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::cli::{CommandExecute, interaction};
 
@@ -69,41 +69,40 @@ impl CommandExecute for Uninstall {
         // If the user opted to run that particular copy of `nix-installer` to do this uninstall,
         // well, we have a problem, since the binary would delete itself.
         // Instead, detect if we're in that location, if so, move the binary and `execv` it.
-        if let Ok(current_exe) = std::env::current_exe() {
-            if current_exe.as_path() == Path::new("/nix/nix-installer") {
-                tracing::debug!(
-                    "Detected uninstall from `/nix/nix-installer`, moving executable and re-executing"
-                );
-                let temp = std::env::temp_dir();
-                let random_trailer: String = {
-                    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+        if let Ok(current_exe) = std::env::current_exe()
+            && current_exe.as_path() == Path::new("/nix/nix-installer")
+        {
+            tracing::debug!(
+                "Detected uninstall from `/nix/nix-installer`, moving executable and re-executing"
+            );
+            let temp = std::env::temp_dir();
+            let random_trailer: String = {
+                const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                                         abcdefghijklmnopqrstuvwxyz\
                                             0123456789";
-                    const PASSWORD_LEN: usize = 16;
-                    let mut rng = rand::rng();
+                const PASSWORD_LEN: usize = 16;
+                let mut rng = rand::rng();
 
-                    (0..PASSWORD_LEN)
-                        .map(|_| {
-                            let idx = rng.random_range(0..CHARSET.len());
-                            CHARSET[idx] as char
-                        })
-                        .collect()
-                };
-                let temp_exe = temp.join(format!("nix-installer-{random_trailer}"));
-                std::fs::copy(&current_exe, &temp_exe)
-                    .wrap_err("Copying nix-installer to tempdir")?;
-                let args = std::env::args();
-                let mut arg_vec_cstring = vec![];
-                for arg in args {
-                    arg_vec_cstring.push(CString::new(arg).wrap_err("Making arg into C string")?);
-                }
-                let temp_exe_cstring = CString::new(temp_exe.to_string_lossy().into_owned())
-                    .wrap_err("Making C string of executable path")?;
-
-                tracing::trace!("Execv'ing `{temp_exe_cstring:?} {arg_vec_cstring:?}`");
-                nix::unistd::execv(&temp_exe_cstring, &arg_vec_cstring)
-                    .wrap_err("Executing copied `nix-installer`")?;
+                (0..PASSWORD_LEN)
+                    .map(|_| {
+                        let idx = rng.random_range(0..CHARSET.len());
+                        CHARSET[idx] as char
+                    })
+                    .collect()
+            };
+            let temp_exe = temp.join(format!("nix-installer-{random_trailer}"));
+            std::fs::copy(&current_exe, &temp_exe).wrap_err("Copying nix-installer to tempdir")?;
+            let args = std::env::args();
+            let mut arg_vec_cstring = vec![];
+            for arg in args {
+                arg_vec_cstring.push(CString::new(arg).wrap_err("Making arg into C string")?);
             }
+            let temp_exe_cstring = CString::new(temp_exe.to_string_lossy().into_owned())
+                .wrap_err("Making C string of executable path")?;
+
+            tracing::trace!("Execv'ing `{temp_exe_cstring:?} {arg_vec_cstring:?}`");
+            nix::unistd::execv(&temp_exe_cstring, &arg_vec_cstring)
+                .wrap_err("Executing copied `nix-installer`")?;
         }
 
         let install_receipt_string =

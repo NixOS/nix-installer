@@ -3,6 +3,8 @@ use std::{process::Output, time::SystemTime};
 use crate::util::which;
 use std::process::Command;
 
+const SELF_TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum SelfTestError {
@@ -24,6 +26,8 @@ pub enum SelfTestError {
     },
     #[error(transparent)]
     SystemTime(#[from] std::time::SystemTimeError),
+    #[error("command timed out")]
+    TimedOut { shell: Shell, command: String },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -53,9 +57,12 @@ impl Shell {
         }
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn self_test(&self) -> Result<(), SelfTestError> {
         let executable = self.executable();
+
+        tracing::info!("Running self test for shell {executable}");
+
         let mut command = match &self {
             // On Mac, `bash -ic nix` won't work, but `bash -lc nix` will.
             Shell::Sh | Shell::Bash => {
@@ -92,15 +99,56 @@ impl Shell {
             command = command_str,
             "Testing Nix install via `{executable}`"
         );
-        let output = command
+        let mut child = command
             .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .env("NIX_REMOTE", "daemon")
-            .output()
+            .spawn()
             .map_err(|error| SelfTestError::Command {
                 shell: *self,
                 command: command_str.clone(),
                 error,
             })?;
+
+        let deadline = std::time::Instant::now() + SELF_TEST_TIMEOUT;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(SelfTestError::TimedOut {
+                            shell: *self,
+                            command: command_str,
+                        });
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                },
+                Err(error) => {
+                    return Err(SelfTestError::Command {
+                        shell: *self,
+                        command: command_str,
+                        error,
+                    });
+                },
+            }
+        };
+
+        let output = Output {
+            status,
+            stdout: child.stdout.map_or_else(Vec::new, |mut s| {
+                let mut buf = Vec::new();
+                std::io::Read::read_to_end(&mut s, &mut buf).unwrap_or(0);
+                buf
+            }),
+            stderr: child.stderr.map_or_else(Vec::new, |mut s| {
+                let mut buf = Vec::new();
+                std::io::Read::read_to_end(&mut s, &mut buf).unwrap_or(0);
+                buf
+            }),
+        };
 
         if output.status.success() {
             Ok(())
@@ -113,7 +161,7 @@ impl Shell {
         }
     }
 
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn discover() -> Vec<Shell> {
         let mut found_shells = vec![];
         for shell in Self::all() {
@@ -126,9 +174,11 @@ impl Shell {
     }
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn self_test() -> Result<(), Vec<SelfTestError>> {
     let shells = Shell::discover();
+
+    tracing::debug!(?shells, "Discovered shells to self test");
 
     let mut failures = vec![];
 
