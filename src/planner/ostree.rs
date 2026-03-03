@@ -13,7 +13,10 @@ use crate::{
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
 };
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use super::{
     ShellProfileLocations,

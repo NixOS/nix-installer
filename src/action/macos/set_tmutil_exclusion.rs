@@ -78,10 +78,11 @@ impl Action for SetTmutilExclusion {
             Ok(_) => Ok(()),
             Err(err) => {
                 if let crate::action::ActionErrorKind::CommandOutput { ref output, .. } = err
-                    && output.status.signal() == Some(9) {
-                        tracing::debug!(%err, "tmutil failed because it was killed with signal 9; ignoring");
-                        return Ok(());
-                    }
+                    && output.status.signal() == Some(9)
+                {
+                    tracing::debug!(%err, "tmutil failed because it was killed with signal 9; ignoring");
+                    return Ok(());
+                }
 
                 Err(Self::error(err))?
             },
@@ -105,10 +106,11 @@ impl Action for SetTmutilExclusion {
             Ok(_) => Ok(()),
             Err(err) => {
                 if let crate::action::ActionErrorKind::CommandOutput { ref output, .. } = err
-                    && output.status.signal() == Some(9) {
-                        tracing::debug!(%err, "tmutil failed because it was killed with signal 9; ignoring");
-                        return Ok(());
-                    }
+                    && output.status.signal() == Some(9)
+                {
+                    tracing::debug!(%err, "tmutil failed because it was killed with signal 9; ignoring");
+                    return Ok(());
+                }
 
                 Err(Self::error(err))?
             },

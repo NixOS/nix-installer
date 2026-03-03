@@ -96,7 +96,11 @@ To test on a specific build id of the Steam Deck:
 6. Safely turn off the VM!
 
 */
-use std::{collections::HashMap, path::{Path, PathBuf}, process::Output};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    process::Output,
+};
 
 use std::process::Command;
 

@@ -70,40 +70,40 @@ impl CommandExecute for Uninstall {
         // well, we have a problem, since the binary would delete itself.
         // Instead, detect if we're in that location, if so, move the binary and `execv` it.
         if let Ok(current_exe) = std::env::current_exe()
-            && current_exe.as_path() == Path::new("/nix/nix-installer") {
-                tracing::debug!(
-                    "Detected uninstall from `/nix/nix-installer`, moving executable and re-executing"
-                );
-                let temp = std::env::temp_dir();
-                let random_trailer: String = {
-                    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+            && current_exe.as_path() == Path::new("/nix/nix-installer")
+        {
+            tracing::debug!(
+                "Detected uninstall from `/nix/nix-installer`, moving executable and re-executing"
+            );
+            let temp = std::env::temp_dir();
+            let random_trailer: String = {
+                const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                                         abcdefghijklmnopqrstuvwxyz\
                                             0123456789";
-                    const PASSWORD_LEN: usize = 16;
-                    let mut rng = rand::rng();
+                const PASSWORD_LEN: usize = 16;
+                let mut rng = rand::rng();
 
-                    (0..PASSWORD_LEN)
-                        .map(|_| {
-                            let idx = rng.random_range(0..CHARSET.len());
-                            CHARSET[idx] as char
-                        })
-                        .collect()
-                };
-                let temp_exe = temp.join(format!("nix-installer-{random_trailer}"));
-                std::fs::copy(&current_exe, &temp_exe)
-                    .wrap_err("Copying nix-installer to tempdir")?;
-                let args = std::env::args();
-                let mut arg_vec_cstring = vec![];
-                for arg in args {
-                    arg_vec_cstring.push(CString::new(arg).wrap_err("Making arg into C string")?);
-                }
-                let temp_exe_cstring = CString::new(temp_exe.to_string_lossy().into_owned())
-                    .wrap_err("Making C string of executable path")?;
-
-                tracing::trace!("Execv'ing `{temp_exe_cstring:?} {arg_vec_cstring:?}`");
-                nix::unistd::execv(&temp_exe_cstring, &arg_vec_cstring)
-                    .wrap_err("Executing copied `nix-installer`")?;
+                (0..PASSWORD_LEN)
+                    .map(|_| {
+                        let idx = rng.random_range(0..CHARSET.len());
+                        CHARSET[idx] as char
+                    })
+                    .collect()
+            };
+            let temp_exe = temp.join(format!("nix-installer-{random_trailer}"));
+            std::fs::copy(&current_exe, &temp_exe).wrap_err("Copying nix-installer to tempdir")?;
+            let args = std::env::args();
+            let mut arg_vec_cstring = vec![];
+            for arg in args {
+                arg_vec_cstring.push(CString::new(arg).wrap_err("Making arg into C string")?);
             }
+            let temp_exe_cstring = CString::new(temp_exe.to_string_lossy().into_owned())
+                .wrap_err("Making C string of executable path")?;
+
+            tracing::trace!("Execv'ing `{temp_exe_cstring:?} {arg_vec_cstring:?}`");
+            nix::unistd::execv(&temp_exe_cstring, &arg_vec_cstring)
+                .wrap_err("Executing copied `nix-installer`")?;
+        }
 
         let install_receipt_string =
             std::fs::read_to_string(receipt).wrap_err("Reading receipt")?;

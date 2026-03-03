@@ -40,10 +40,10 @@ impl UnmountApfsVolume {
 
         if let Ok(diskinfo) = diskinfo
             && Path::new(&diskinfo.parent_whole_disk) == disk.as_ref()
-                && diskinfo.mount_point.as_deref() == Some("/nix".as_ref())
-            {
-                return Ok(StatefulAction::skipped(task));
-            }
+            && diskinfo.mount_point.as_deref() == Some("/nix".as_ref())
+        {
+            return Ok(StatefulAction::skipped(task));
+        }
 
         Ok(task.into())
     }

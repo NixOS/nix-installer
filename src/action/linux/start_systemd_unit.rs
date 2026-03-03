@@ -115,9 +115,9 @@ impl Action for StartSystemdUnit {
                     .stdin(std::process::Stdio::null()),
             )
             .map_err(Self::error)
-            {
-                errors.push(e);
-            };
+        {
+            errors.push(e);
+        };
 
         // We do both to avoid an error doing `disable --now` if the user did stop it already somehow.
         if let Err(e) = execute_command(

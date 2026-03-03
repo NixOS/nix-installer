@@ -145,8 +145,6 @@ fn ensure_nix_store_group(nix_store_gid: u32) -> Result<(), ActionErrorKind> {
         .contents_first(true)
         .into_iter()
         .filter_entry(|entry| {
-            
-
             entry.path() == std::path::Path::new(NIX_STORE_LOCATION)
                 // ... or immediate children of the current directory
                 // Children of children are owned by the build process, and we don't
