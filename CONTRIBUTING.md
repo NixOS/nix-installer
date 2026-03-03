@@ -84,15 +84,12 @@ git+file:///home/ana/git/determinatesystems/nix-installer
 │       ├───fedora-v36
 │       │   └───x86_64-linux
 │       │       └───install-default: derivation 'installer-test-fedora-v36-install-default'
-│       ├───rhel-v7
+│       ├───rocky-v8
 │       │   └───x86_64-linux
-│       │       └───install-default: derivation 'installer-test-rhel-v7-install-default'
-│       ├───rhel-v8
+│       │       └───install-default: derivation 'installer-test-rocky-v8-install-default'
+│       ├───rocky-v9
 │       │   └───x86_64-linux
-│       │       └───install-default: derivation 'installer-test-rhel-v8-install-default'
-│       ├───rhel-v9
-│       │   └───x86_64-linux
-│       │       └───install-default: derivation 'installer-test-rhel-v9-install-default'
+│       │       └───install-default: derivation 'installer-test-rocky-v9-install-default'
 │       └───ubuntu-v22_04
 │           └───x86_64-linux
 │               └───install-default: derivation 'installer-test-ubuntu-v22_04-install-default'
@@ -107,7 +104,7 @@ nix build .#hydraJobs.vm-test.all.x86_64-linux.all -L
 To run a specific distribution listed in the `nix flake show` output:
 
 ```bash
-nix build .#hydraJobs.vm-test.rhel-v7.x86_64-linux.all -L -j 4
+nix build .#hydraJobs.vm-test.rocky-v8.x86_64-linux.all -L -j 4
 ```
 
 > You may wish to set `-j 4` to some other number. Some OS's (Ubuntu 16.04) exhibit problems rapidly updating their users/groups on a system running dozens of VMs.
@@ -121,18 +118,18 @@ nix build github:NixOS/nix-installer/${BRANCH}#hydraJobs.vm-test.ubuntu-v22_04.x
 <details>
   <summary><strong>Adding a distro?</strong></summary>
 
-Notice how `rhel-v7` has a `v7`, not just `7`? That's so the test output shows correctly, as Nix will interpret the first `-\d` (eg `-7`, `-123213`) as a version, and not show it in the output.
+Notice how `rocky-v8` has a `v8`, not just `8`? That's so the test output shows correctly, as Nix will interpret the first `-\d` (eg `-8`, `-123213`) as a version, and not show it in the output.
 
-Using `v7` instead turns:
+Using `v8` instead turns:
 
 ```
 # ...
-installer-test-rhel> Unpacking Vagrant box /nix/store/8maga4w267f77agb93inbg54whh5lxhn-libvirt.box...
-installer-test-rhel> Vagrantfile
-installer-test-rhel> box.img
-installer-test-rhel> info.json
-installer-test-rhel> metadata.json
-installer-test-rhel> Formatting './disk.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=137438953472 backing_file=./box.img backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+installer-test-rocky> Unpacking Vagrant box /nix/store/8maga4w267f77agb93inbg54whh5lxhn-libvirt.box...
+installer-test-rocky> Vagrantfile
+installer-test-rocky> box.img
+installer-test-rocky> info.json
+installer-test-rocky> metadata.json
+installer-test-rocky> Formatting './disk.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=137438953472 backing_file=./box.img backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
 # ...
 ```
 
@@ -140,12 +137,12 @@ Into this:
 
 ```
 # ...
-installer-test-rhel-v7-install-default> Unpacking Vagrant box /nix/store/8maga4w267f77agb93inbg54whh5lxhn-libvirt.box...
-installer-test-rhel-v7-install-default> Vagrantfile
-installer-test-rhel-v7-install-default> box.img
-installer-test-rhel-v7-install-default> info.json
-installer-test-rhel-v7-install-default> metadata.json
-installer-test-rhel-v7-install-default> Formatting './disk.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=137438953472 backing_file=./box.img backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+installer-test-rocky-v8-install-default> Unpacking Vagrant box /nix/store/8maga4w267f77agb93inbg54whh5lxhn-libvirt.box...
+installer-test-rocky-v8-install-default> Vagrantfile
+installer-test-rocky-v8-install-default> box.img
+installer-test-rocky-v8-install-default> info.json
+installer-test-rocky-v8-install-default> metadata.json
+installer-test-rocky-v8-install-default> Formatting './disk.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=137438953472 backing_file=./box.img backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
 # ...
 ```
 

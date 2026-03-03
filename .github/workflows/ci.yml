@@ -261,9 +261,8 @@ jobs:
           - ubuntu-v24_04
           - fedora-v36
           - fedora-v37
-          - rhel-v7
-          - rhel-v8
-          - rhel-v9
+          - rocky-v8
+          - rocky-v9
           - opensuse-leap-v15_6
           - archlinux-v20260115
     steps:

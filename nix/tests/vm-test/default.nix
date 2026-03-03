@@ -421,28 +421,19 @@ let
       system = "x86_64-linux";
     };
 
-    "rhel-v7" = {
+    "rocky-v8" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/rhel7/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-b4afnqKCO9oWXgYHb9DeQ2berSwOjS27rSd9TxXDc/U=";
+        url = "https://app.vagrantup.com/generic/boxes/rocky8/versions/4.1.12/providers/libvirt.box";
+        hash = "sha256-IAjRT9h1T3Fc/1+aIbKlPLn3uP29cqM+JRVoFztHWV4=";
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
     };
 
-    "rhel-v8" = {
+    "rocky-v9" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/rhel8/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-zFOPjSputy1dPgrQRixBXmlyN88cAKjJ21VvjSWUCUY=";
-      };
-      rootDisk = "box.img";
-      system = "x86_64-linux";
-    };
-
-    "rhel-v9" = {
-      image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/rhel9/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-vL/FbB3kK1rcSaR627nWmScYGKGk4seSmAdq6N5diMg=";
+        url = "https://app.vagrantup.com/generic/boxes/rocky9/versions/4.1.12/providers/libvirt.box";
+        hash = "sha256-1M7JDMYYYwAwIBvDOsixH/umefPvZ0bCaWzSG1DwX5Y=";
       };
       rootDisk = "box.img";
       system = "x86_64-linux";
