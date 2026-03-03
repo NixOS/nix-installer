@@ -193,6 +193,9 @@ impl InstallPlan {
 
         self.write_receipt()?;
 
+        if self.daemon_expected() {
+            Self::wait_for_daemon_socket();
+        }
         if let Err(err) = crate::self_test::self_test().map_err(NixInstallerError::SelfTest) {
             tracing::warn!("{err:?}")
         }
@@ -335,6 +338,68 @@ impl InstallPlan {
         write_receipt(self, &install_receipt_path)?;
 
         Ok(())
+    }
+
+    /// Whether the install plan is expected to have started a Nix daemon.
+    ///
+    /// This checks the planner settings for `start_daemon` (Linux) and
+    /// `init` (all platforms).  macOS always starts the daemon so we default
+    /// to `true` when the setting is absent.
+    fn daemon_expected(&self) -> bool {
+        let settings = match self.planner.settings() {
+            Ok(s) => s,
+            Err(_) => return true,
+        };
+
+        // --init none means no daemon at all
+        if let Some(init) = settings.get("init")
+            && init.as_str() == Some("none")
+        {
+            return false;
+        }
+
+        // --no-start-daemon means the daemon is configured but not started
+        if let Some(start_daemon) = settings.get("start_daemon")
+            && start_daemon.as_bool() == Some(false)
+        {
+            return false;
+        }
+
+        true
+    }
+
+    const DAEMON_SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
+
+    /// Poll for the Nix daemon socket to appear on disk.
+    ///
+    /// After the init service starts the daemon, there is a brief window
+    /// before the daemon creates its Unix socket.  We poll here so the
+    /// self-test doesn't race against daemon startup.
+    fn wait_for_daemon_socket() {
+        let path = Path::new(Self::DAEMON_SOCKET_PATH);
+        if path.exists() {
+            return;
+        }
+
+        const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+        const INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+        tracing::info!("Waiting up to {}s for Nix daemon socket", TIMEOUT.as_secs());
+
+        let deadline = std::time::Instant::now() + TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(INTERVAL);
+            if path.exists() {
+                tracing::debug!("Nix daemon socket appeared");
+                return;
+            }
+        }
+
+        tracing::warn!(
+            "Nix daemon socket did not appear at {} within {}s",
+            Self::DAEMON_SOCKET_PATH,
+            TIMEOUT.as_secs()
+        );
     }
 }
 
