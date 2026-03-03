@@ -161,6 +161,12 @@
               inherit cargoArtifacts;
               env = sharedAttrs.env // {
                 RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
+                # The nixpkgs 25.11 darwin stdenv adds libiconv to NIX_LDFLAGS,
+                # causing the linker to pull it in as a dynamic dependency even
+                # though no iconv symbols are used. The nix-installer binary must
+                # run on macOS *before* Nix is installed, so it cannot reference
+                # /nix/store paths at runtime. Tell the linker to drop unused libs.
+                NIX_LDFLAGS = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin "-dead_strip_dylibs";
               };
               postInstall = ''
                 cp nix-installer.sh $out/bin/nix-installer.sh
