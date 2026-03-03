@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "nix-installer"
-version = "2.33.3"
+version = "2.34.0"
 dependencies = [
  "clap",
  "color-eyre",
