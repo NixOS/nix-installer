@@ -11,6 +11,28 @@ pub enum LoadError {
     ProfileListing(#[from] crate::ActionErrorKind),
 }
 
+/// Extract just the XML plist content from the output.
+///
+/// `/usr/bin/profiles` may emit non-XML text before or after the plist
+/// (e.g. "There are no configuration profiles installed"). The position
+/// varies across macOS versions. We extract the `<?xml`..`</plist>` range
+/// to avoid plist parse failures from surrounding plain text.
+fn extract_plist(buf: &[u8]) -> &[u8] {
+    const START_TAG: &[u8] = b"<?xml";
+    const END_TAG: &[u8] = b"</plist>";
+
+    let start = buf.windows(START_TAG.len()).position(|w| w == START_TAG);
+    let end = buf
+        .windows(END_TAG.len())
+        .rposition(|w| w == END_TAG)
+        .map(|pos| pos + END_TAG.len());
+
+    match (start, end) {
+        (Some(s), Some(e)) if s < e => &buf[s..e],
+        _ => buf,
+    }
+}
+
 pub fn load() -> Result<Policies, LoadError> {
     let buf = execute_command(
         std::process::Command::new("/usr/bin/profiles")
@@ -23,7 +45,12 @@ pub fn load() -> Result<Policies, LoadError> {
     )?
     .stdout;
 
-    Ok(plist::from_reader(std::io::Cursor::new(buf))?)
+    parse(&buf)
+}
+
+pub fn parse(buf: &[u8]) -> Result<Policies, LoadError> {
+    let xml = extract_plist(buf);
+    Ok(plist::from_reader(std::io::Cursor::new(xml))?)
 }
 
 pub type Policies = HashMap<Target, Vec<Profile>>;
@@ -123,6 +150,34 @@ mod tests {
             )]),
             parsed
         );
+    }
+
+    /// Regression test: `/usr/bin/profiles -P -o stdout-xml` emits
+    /// "There are no configuration profiles installed" as plain text
+    /// surrounding the plist XML when no profiles exist. The position
+    /// varies across macOS versions (before or after the XML). This
+    /// caused a `Parse(UnexpectedXmlCharactersExpectedElement)` error
+    /// that made `check_suis()` skip the SystemUIServer policy check.
+    #[test]
+    fn parse_empty_profiles_with_trailing_text() {
+        let raw = include_bytes!("./profile.sample.empty-with-trailing-text.plist");
+        assert!(
+            plist::from_reader::<_, Policies>(std::io::Cursor::new(raw)).is_err(),
+            "raw input should fail to parse without extraction"
+        );
+        let parsed = parse(raw).unwrap();
+        assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_profiles_with_leading_text() {
+        let raw = include_bytes!("./profile.sample.empty-with-leading-text.plist");
+        assert!(
+            plist::from_reader::<_, Policies>(std::io::Cursor::new(raw)).is_err(),
+            "raw input should fail to parse without extraction"
+        );
+        let parsed = parse(raw).unwrap();
+        assert!(parsed.is_empty());
     }
 
     #[test]
