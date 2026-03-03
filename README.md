@@ -219,7 +219,7 @@ It uses this installer under the hood.
 ```yaml
 - uses: NixOS/nix-installer-action@main
   with:
-    installer-version: v2.33.3
+    installer-version: 2.33.3
 ```
 
 **No-init mode (for containers):**
