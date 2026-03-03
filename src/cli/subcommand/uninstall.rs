@@ -13,7 +13,7 @@ use crate::{
 use clap::{ArgAction, Parser};
 use color_eyre::eyre::{WrapErr, eyre};
 use owo_colors::OwoColorize;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::cli::{CommandExecute, interaction};
 

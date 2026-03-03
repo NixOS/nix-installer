@@ -4,7 +4,7 @@ use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
     util::OnMissing,
 };
-use rand::Rng;
+use rand::RngExt;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
