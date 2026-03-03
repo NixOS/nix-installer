@@ -247,11 +247,10 @@ pub(crate) fn retry_bootout(domain: &str, service_name: &str) -> Result<(), Acti
 /// ```
 #[tracing::instrument]
 pub(crate) fn remove_socket_path(path: &Path) {
-    if let Err(err) = fs::remove_file(path) {
-        if err.kind() != ErrorKind::NotFound {
+    if let Err(err) = fs::remove_file(path)
+        && err.kind() != ErrorKind::NotFound {
             tracing::warn!(?err, ?path, "Could not clean up unused socket");
         }
-    }
 }
 
 /// Wait for `launchctl kickstart {domain}/{service_name}` to succeed up to `retry_tokens * 500ms` amount

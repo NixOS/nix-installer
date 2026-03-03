@@ -96,7 +96,7 @@ To test on a specific build id of the Steam Deck:
 6. Safely turn off the VM!
 
 */
-use std::{collections::HashMap, path::PathBuf, process::Output};
+use std::{collections::HashMap, path::{Path, PathBuf}, process::Output};
 
 use std::process::Command;
 
@@ -259,7 +259,7 @@ impl Planner for SteamDeck {
             actions.push(start_nix_mount.boxed());
         }
 
-        if std::path::Path::new("/etc/atomic-update.conf.d").exists() {
+        if Path::new("/etc/atomic-update.conf.d").exists() {
             let create_atomic_update_buf = "\
                 /etc/fish/conf.d/nix.fish\n\
                 /etc/nix/**\n\
@@ -313,7 +313,7 @@ impl Planner for SteamDeck {
             .fish
             .vendor_confd_prefixes
             .iter()
-            .position(|v| *v == PathBuf::from("/usr/share/fish/"))
+            .position(|v| v == Path::new("/usr/share/fish/"))
         {
             shell_profile_locations
                 .fish

@@ -533,48 +533,44 @@ impl Action for ConfigureInitService {
                     let socket_is_active = is_active(name).map_err(Self::error)?;
                     let socket_is_enabled = is_enabled(name).map_err(Self::error)?;
 
-                    if socket_is_active {
-                        if let Err(err) = execute_command(
+                    if socket_is_active
+                        && let Err(err) = execute_command(
                             Command::new("systemctl")
                                 .args(["stop", name])
                                 .stdin(std::process::Stdio::null()),
                         ) {
                             errors.push(err);
                         }
-                    }
 
-                    if socket_is_enabled {
-                        if let Err(err) = execute_command(
+                    if socket_is_enabled
+                        && let Err(err) = execute_command(
                             Command::new("systemctl")
                                 .args(["disable", name])
                                 .stdin(std::process::Stdio::null()),
                         ) {
                             errors.push(err);
                         }
-                    }
                 }
                 let service_is_active = is_active("nix-daemon.service").map_err(Self::error)?;
                 let service_is_enabled = is_enabled("nix-daemon.service").map_err(Self::error)?;
 
-                if service_is_active {
-                    if let Err(err) = execute_command(
+                if service_is_active
+                    && let Err(err) = execute_command(
                         Command::new("systemctl")
                             .args(["stop", "nix-daemon.service"])
                             .stdin(std::process::Stdio::null()),
                     ) {
                         errors.push(err);
                     }
-                }
 
-                if service_is_enabled {
-                    if let Err(err) = execute_command(
+                if service_is_enabled
+                    && let Err(err) = execute_command(
                         Command::new("systemctl")
                             .args(["disable", "nix-daemon.service"])
                             .stdin(std::process::Stdio::null()),
                     ) {
                         errors.push(err);
                     }
-                }
 
                 if let Err(err) = execute_command(
                     Command::new("systemd-tmpfiles")
@@ -605,13 +601,12 @@ impl Action for ConfigureInitService {
             },
         };
 
-        if let Some(dest) = &self.service_dest {
-            if let Err(err) = crate::util::remove_file(dest, OnMissing::Ignore)
+        if let Some(dest) = &self.service_dest
+            && let Err(err) = crate::util::remove_file(dest, OnMissing::Ignore)
                 .map_err(|e| ActionErrorKind::Remove(PathBuf::from(dest), e))
             {
                 errors.push(err);
             }
-        }
 
         for socket in self.socket_files.iter() {
             if let Err(err) = crate::util::remove_file(&socket.dest, OnMissing::Ignore)

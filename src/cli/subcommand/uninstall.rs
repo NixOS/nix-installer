@@ -69,8 +69,8 @@ impl CommandExecute for Uninstall {
         // If the user opted to run that particular copy of `nix-installer` to do this uninstall,
         // well, we have a problem, since the binary would delete itself.
         // Instead, detect if we're in that location, if so, move the binary and `execv` it.
-        if let Ok(current_exe) = std::env::current_exe() {
-            if current_exe.as_path() == Path::new("/nix/nix-installer") {
+        if let Ok(current_exe) = std::env::current_exe()
+            && current_exe.as_path() == Path::new("/nix/nix-installer") {
                 tracing::debug!(
                     "Detected uninstall from `/nix/nix-installer`, moving executable and re-executing"
                 );
@@ -104,7 +104,6 @@ impl CommandExecute for Uninstall {
                 nix::unistd::execv(&temp_exe_cstring, &arg_vec_cstring)
                     .wrap_err("Executing copied `nix-installer`")?;
             }
-        }
 
         let install_receipt_string =
             std::fs::read_to_string(receipt).wrap_err("Reading receipt")?;

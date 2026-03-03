@@ -107,8 +107,8 @@ impl Action for StartSystemdUnit {
     fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
 
-        if self.enable {
-            if let Err(e) = execute_command(
+        if self.enable
+            && let Err(e) = execute_command(
                 Command::new("systemctl")
                     .arg("disable")
                     .arg(&self.unit)
@@ -117,8 +117,7 @@ impl Action for StartSystemdUnit {
             .map_err(Self::error)
             {
                 errors.push(e);
-            }
-        };
+            };
 
         // We do both to avoid an error doing `disable --now` if the user did stop it already somehow.
         if let Err(e) = execute_command(
