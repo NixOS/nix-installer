@@ -24,6 +24,8 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 | -------------------------------------------------------------------- | :---------------: | :---------: | :---------------: |
 | Linux (`x86_64` and `aarch64`)                                       | ✓ (via [systemd]) |      ✓      |      Stable       |
 | MacOS (`x86_64` and `aarch64`)                                       |         ✓         |             | Stable (see note) |
+| ostree (Fedora Silverblue, etc.)                                     | ✓ (via [systemd]) |      ✓      |      Stable       |
+| [bootc] container images                                             | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Valve Steam Deck][steam-deck] (SteamOS)                             |         ✓         |             |      Stable       |
 | [Windows Subsystem for Linux][wsl] 2 (WSL2) (`x86_64` and `aarch64`) | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Podman] Linux containers                                            | ✓ (via [systemd]) |      ✓      |      Stable       |
@@ -204,6 +206,48 @@ podman rmi $IMAGE
 
 With some container tools, such as [Docker], you can omit `sandbox = false`.
 Omitting this will negatively impact compatibility with container tools like [Podman].
+
+### On ostree-based desktops (Fedora Silverblue, etc.)
+
+Immutable Linux distributions based on [ostree](https://ostreedev.github.io/ostree/) have a
+read-only root filesystem, so `/nix` cannot be created directly. The `ostree` planner handles
+this by setting up a bind mount from a persistence directory (`/var/home/nix` by default) to
+`/nix` via systemd units.
+
+On a running ostree system the installer auto-detects the right planner, so the default command
+works:
+
+```shell
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
+```
+
+### In bootc container image builds
+
+[bootc] container images are also ostree-based, but they are built without a running systemd
+and without `/var` (it is created on first boot). This means the ostree planner cannot be used
+during container builds. The dedicated `bootc` planner handles this lifecycle:
+
+1. **At build time**, Nix is installed into `/nix` which becomes part of the image layer.
+   Systemd units, [sysusers.d](https://www.freedesktop.org/software/systemd/man/sysusers.d.html),
+   and [tmpfiles.d](https://www.freedesktop.org/software/systemd/man/tmpfiles.d.html) configs
+   are written but no daemons are started.
+2. **On first boot**, `systemd-tmpfiles` copies `/nix` to `/var/lib/nix` (mutable storage),
+   `systemd-sysusers` recreates the build users, and a bind-mount makes `/var/lib/nix`
+   available at `/nix`. The Nix daemon starts automatically.
+
+The `bootc` planner is auto-detected when `/usr/bin/bootc` is present, or can be selected
+explicitly:
+
+```dockerfile
+# Containerfile
+FROM quay.io/fedora/fedora-bootc:42
+RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install bootc \
+  --extra-conf "sandbox = false" --no-confirm
+```
+
+> [!NOTE]
+> Uninstall is not supported on bootc systems. To remove Nix, rebuild the container image
+> without the `nix-installer install bootc` step.
 
 ### In GitHub Actions
 
@@ -421,6 +465,7 @@ nix-installer uninstall /path/to/receipt.json
 `nix-installer self-test` only takes [general settings](#general-settings).
 
 [actions]: https://github.com/features/actions
+[bootc]: https://containers.github.io/bootc/
 [docker]: https://docker.com
 [enabling-systemd]: https://devblogs.microsoft.com/commandline/systemd-support-is-now-available-in-wsl/#how-can-you-get-systemd-on-your-machine
 [flakes]: https://zero-to-nix.com/concepts/flakes
