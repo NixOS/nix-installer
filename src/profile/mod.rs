@@ -77,6 +77,19 @@ impl Profile<'_> {
     }
 }
 
+/// Find the nix store path containing bin/nix by resolving the `nix` binary
+/// through PATH. The tests need this because `nix_store_path` is used to
+/// construct paths like `nix_store_path.join("bin/nix")`, so it must point to
+/// the actual store path rather than a hardcoded profile symlink that may not
+/// exist (e.g. /nix/var/nix/profiles/default/).
+#[cfg(test)]
+fn find_nix_store_path() -> PathBuf {
+    let nix_bin = crate::util::which("nix").expect("nix not found in PATH");
+    let real_path = std::fs::canonicalize(nix_bin).expect("canonicalize nix path");
+    // .../bin/nix -> ...
+    real_path.parent().unwrap().parent().unwrap().to_path_buf()
+}
+
 pub fn get_profile_backend_type(profile: &std::path::Path) -> Option<BackendType> {
     // If the file has a manifest.json, that means `nix profile` touched it, and ONLY `nix profile` can touch it.
     if std::fs::metadata(profile.join("manifest.json")).is_ok() {
