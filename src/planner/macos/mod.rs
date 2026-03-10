@@ -255,6 +255,7 @@ impl Planner for Macos {
     }
 
     fn pre_install_check(&self) -> Result<(), PlannerError> {
+        check_macos_version()?;
         check_suis()?;
         check_not_running_in_rosetta()?;
 
@@ -266,6 +267,43 @@ impl From<Macos> for BuiltinPlanner {
     fn from(val: Macos) -> Self {
         BuiltinPlanner::Macos(val)
     }
+}
+
+/// The minimum macOS version required to run the bundled Nix.
+///
+/// Nix links against the system libc++ (`/usr/lib/libc++.1.dylib`).
+/// Since Nix 2.34, libnixexpr uses `std::pmr::memory_resource`, which
+/// was introduced in LLVM 16's libc++ and first shipped in macOS 14
+/// (Sonoma).  On older systems the dynamic linker aborts with
+/// "Symbol not found: __ZNSt3__13pmr15memory_resourceD2Ev".
+const MIN_MACOS_VERSION: (u64, u64) = (14, 0);
+
+fn check_macos_version() -> Result<(), PlannerError> {
+    use sysctl::{Ctl, Sysctl};
+
+    let ctl = Ctl::new("kern.osproductversion")?;
+    let version_string = ctl.value_string()?;
+
+    let parts: Vec<u64> = version_string
+        .trim()
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    let (major, minor) = (
+        parts.first().copied().unwrap_or(0),
+        parts.get(1).copied().unwrap_or(0),
+    );
+
+    if (major, minor) < MIN_MACOS_VERSION {
+        return Err(MacosError::UnsupportedMacosVersion {
+            got: version_string.trim().to_owned(),
+            min: format!("{}.{}", MIN_MACOS_VERSION.0, MIN_MACOS_VERSION.1),
+        })
+        .map_err(|e| PlannerError::Custom(Box::new(e)));
+    }
+
+    Ok(())
 }
 
 fn check_nix_darwin_not_installed() -> Result<(), PlannerError> {
@@ -356,6 +394,12 @@ pub enum MacosError {
 
     #[error("{0}")]
     BlockedBySystemUIServerPolicy(String),
+
+    #[error(
+        "macOS {got} is too old — Nix requires macOS {min} or later (the bundled Nix links against \
+         system libc++ which only provides std::pmr since macOS 14)"
+    )]
+    UnsupportedMacosVersion { got: String, min: String },
 }
 
 impl HasExpectedErrors for MacosError {
@@ -363,6 +407,7 @@ impl HasExpectedErrors for MacosError {
         match self {
             this @ MacosError::UninstallNixDarwin => Some(Box::new(this)),
             this @ MacosError::BlockedBySystemUIServerPolicy(_) => Some(Box::new(this)),
+            this @ MacosError::UnsupportedMacosVersion { .. } => Some(Box::new(this)),
         }
     }
 }
