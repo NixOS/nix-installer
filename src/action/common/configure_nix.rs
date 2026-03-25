@@ -49,6 +49,7 @@ impl ConfigureNix {
                     settings.nix_build_group_name.clone(),
                     settings.ssl_cert_file.clone(),
                     settings.extra_conf.clone(),
+                    settings.enable_experimental.unwrap_or(false),
                     settings.force,
                 )
                 .map_err(Self::error)?,

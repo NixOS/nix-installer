@@ -181,6 +181,21 @@ pub struct CommonSettings {
         )
     )]
     pub add_channel: bool,
+
+    /// Whether to enable commonly used experimental features (flakes and nix-command)
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            action(ArgAction::SetTrue),
+            default_value = "false",
+            global = true,
+            env = "NIX_INSTALLER_ENABLE_EXPERIMENTAL",
+            long("enable-experimental"),
+        )
+    )]
+    // Make this optional so we can still parse old plans and don't have to bump
+    // version
+    pub enable_experimental: Option<bool>,
 }
 
 pub(crate) fn default_nix_build_user_id_base() -> u32 {
@@ -232,6 +247,7 @@ impl CommonSettings {
             force: false,
             skip_nix_conf: false,
             add_channel: false,
+            enable_experimental: Some(false),
         })
     }
 
@@ -249,6 +265,7 @@ impl CommonSettings {
             force,
             skip_nix_conf,
             add_channel,
+            enable_experimental,
         } = self;
         let mut map = HashMap::default();
 
@@ -282,6 +299,11 @@ impl CommonSettings {
         map.insert("skip_nix_conf".into(), serde_json::to_value(skip_nix_conf)?);
 
         map.insert("add_channel".into(), serde_json::to_value(add_channel)?);
+
+        map.insert(
+            "enable_experimental".into(),
+            serde_json::to_value(enable_experimental)?,
+        );
 
         Ok(map)
     }

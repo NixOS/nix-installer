@@ -42,6 +42,7 @@ impl PlaceNixConfiguration {
         nix_build_group_name: String,
         ssl_cert_file: Option<PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
+        enable_experimental: bool,
         force: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let extra_conf = Self::parse_extra_conf(extra_conf)?;
@@ -49,12 +50,16 @@ impl PlaceNixConfiguration {
         let configured_ssl_cert_file = ssl_cert_file;
 
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
-        let standard_nix_config = Some(Self::setup_standard_config(maybe_trusted_users)?);
+        let standard_nix_config = Some(Self::setup_standard_config(
+            maybe_trusted_users,
+            enable_experimental,
+        )?);
 
         let custom_nix_config = Self::setup_extra_config(
             extra_conf,
             nix_build_group_name,
             configured_ssl_cert_file.as_ref(),
+            enable_experimental,
         )?;
 
         let create_directory = CreateDirectory::plan(NIX_CONF_FOLDER, None, None, 0o0755, force)
@@ -93,15 +98,18 @@ impl PlaceNixConfiguration {
 
     fn setup_standard_config(
         maybe_trusted_users: Option<&String>,
+        enable_experimental: bool,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let mut nix_config = nix_config_parser::NixConfig::new();
         let settings = nix_config.settings_mut();
 
-        let experimental_features = ["nix-command", "flakes"];
-        settings.insert(
-            "extra-experimental-features".to_string(),
-            experimental_features.join(" "),
-        );
+        if enable_experimental {
+            let experimental_features = ["nix-command", "flakes"];
+            settings.insert(
+                "extra-experimental-features".to_string(),
+                experimental_features.join(" "),
+            );
+        }
 
         // https://github.com/DeterminateSystems/nix-installer/issues/449#issuecomment-1551782281
         #[cfg(not(target_os = "macos"))]
@@ -179,6 +187,7 @@ impl PlaceNixConfiguration {
         mut extra_conf: nix_config_parser::NixConfig,
         nix_build_group_name: String,
         ssl_cert_file: Option<&PathBuf>,
+        enable_experimental: bool,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let settings = extra_conf.settings_mut();
 
@@ -203,8 +212,11 @@ impl PlaceNixConfiguration {
         // modify nix.custom.conf to their heart's desire. In most cases, however, they likely just
         // want their setting to take effect (and probably have no opinion on or would even prefer
         // our standard experimental features continue to take effect).
-        if let Some((idx, _key, experimental_features)) =
-            settings.shift_remove_full(EXPERIMENTAL_FEATURES_CONF_NAME)
+        // NOTE(mkenigs): we only need to do this if we set experimental
+        // features, which we only do when `enable_experimental` is true
+        if enable_experimental
+            && let Some((idx, _key, experimental_features)) =
+                settings.shift_remove_full(EXPERIMENTAL_FEATURES_CONF_NAME)
         {
             tracing::debug!(
                 "User specified {EXPERIMENTAL_FEATURES_CONF_NAME} in extra-conf, but this would \
@@ -338,8 +350,12 @@ mod tests {
             UrlOrPathOrString::String(String::from("extra-trusted-public-keys = foobar")),
         ])?;
 
-        let nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
+        let nix_config = PlaceNixConfiguration::setup_extra_config(
+            extra_conf,
+            String::from("foo"),
+            None,
+            false,
+        )?;
 
         assert!(
             nix_config
@@ -372,9 +388,9 @@ mod tests {
             format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
         )])?;
 
-        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None)?;
+        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None, false)?;
         let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
+            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None, true)?;
         dbg!(&custom_nix_config);
         dbg!(custom_nix_config.settings());
         dbg!(
@@ -388,7 +404,7 @@ mod tests {
                 .settings()
                 .get(EXPERIMENTAL_FEATURES_CONF_NAME)
                 .is_none(),
-            "experimental-features in `--extra-conf` was renamed to extra-experimental-features"
+            "experimental-features in custom conf was removed"
         );
         assert!(
             custom_nix_config
@@ -396,7 +412,7 @@ mod tests {
                 .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
                 .unwrap()
                 .contains("foobar"),
-            "experimental-features in `--extra-conf` was renamed to extra-experimental-features"
+            "experimental-features in custom conf was renamed to extra-experimental-features"
         );
 
         let mut place_nix_configuration = StatefulAction::uncompleted(PlaceNixConfiguration {
@@ -434,7 +450,103 @@ mod tests {
         assert!(
             custom_conf.contains(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
                 && custom_conf.contains("foobar"),
-            "experimental-features in `--extra-conf` was renamed to extra-experimental-features"
+            "experimental-features in custom conf was renamed to extra-experimental-features"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn enable_experimental() -> eyre::Result<()> {
+        let nix_conf_dir = tempfile::tempdir()?;
+        let nix_conf_path = nix_conf_dir.path().join("nix.conf");
+        let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
+
+        let extra_conf = PlaceNixConfiguration::parse_extra_conf(vec![UrlOrPathOrString::String(
+            format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
+        )])?;
+
+        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None, true)?;
+        let custom_nix_config =
+            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None, true)?;
+
+        assert!(
+            standard_nix_config
+                .settings()
+                .get("extra-experimental-features")
+                .unwrap()
+                .contains("nix-command"),
+            "standard config should contain extra-experimental-features when enable_experimental is true"
+        );
+        assert!(
+            standard_nix_config
+                .settings()
+                .get("extra-experimental-features")
+                .unwrap()
+                .contains("flakes"),
+            "standard config should contain flakes in extra-experimental-features when enable_experimental is true"
+        );
+
+        assert!(
+            custom_nix_config
+                .settings()
+                .get(EXPERIMENTAL_FEATURES_CONF_NAME)
+                .is_none(),
+            "experimental-features in custom conf was removed"
+        );
+        assert!(
+            custom_nix_config
+                .settings()
+                .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
+                .unwrap()
+                .contains("foobar"),
+            "experimental-features in custom conf was renamed to extra-experimental-features"
+        );
+
+        let mut place_nix_configuration = StatefulAction::uncompleted(PlaceNixConfiguration {
+            create_directory: StatefulAction::completed(CreateDirectory {
+                path: nix_conf_dir.path().to_owned(),
+                user: None,
+                group: None,
+                mode: None,
+                is_mountpoint: false,
+                force_prune_on_revert: false,
+            }),
+            create_or_merge_standard_nix_config: Some(
+                CreateOrMergeNixConfig::plan(
+                    &nix_conf_path,
+                    standard_nix_config,
+                    NIX_CONFIG_HEADER.to_string(),
+                    Some(NIX_CONFIG_FOOTER.to_string()),
+                )
+                .map_err(PlaceNixConfiguration::error)?,
+            ),
+            create_or_merge_custom_nix_config: CreateOrMergeNixConfig::plan(
+                &nix_custom_conf_path,
+                custom_nix_config,
+                CUSTOM_NIX_CONFIG_HEADER.to_string(),
+                None,
+            )
+            .map_err(PlaceNixConfiguration::error)?,
+        });
+
+        place_nix_configuration
+            .try_execute()
+            .expect("place nix config should succeed");
+
+        let standard_conf = std::fs::read_to_string(nix_conf_path).unwrap();
+        assert!(
+            standard_conf.contains("extra-experimental-features")
+                && standard_conf.contains("nix-command")
+                && standard_conf.contains("flakes"),
+            "standard conf should contain extra-experimental-features with nix-command and flakes"
+        );
+
+        let custom_conf = std::fs::read_to_string(nix_custom_conf_path).unwrap();
+        assert!(
+            custom_conf.contains(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
+                && custom_conf.contains("foobar"),
+            "experimental-features in custom conf was renamed to extra-experimental-features"
         );
 
         Ok(())
@@ -453,9 +565,13 @@ mod tests {
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
 
         let standard_nix_config =
-            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users)?;
-        let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
+            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users, false)?;
+        let custom_nix_config = PlaceNixConfiguration::setup_extra_config(
+            extra_conf,
+            String::from("foo"),
+            None,
+            false,
+        )?;
 
         assert!(
             custom_nix_config
