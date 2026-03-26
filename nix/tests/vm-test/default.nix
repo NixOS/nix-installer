@@ -63,9 +63,6 @@ let
 
         out=$(nix-build --no-substitute -E 'derivation { name = "foo"; system = "x86_64-linux"; builder = "/bin/sh"; args = ["-c" "echo foobar > $out"]; }')
         [[ $(cat $out) = foobar ]]
-
-        out=$(nix build 2>&1)"
-        [[ "$out" = *"experimental Nix feature 'nix-command' is disabled"* ]]
       '';
       uninstall = ''
         /nix/nix-installer uninstall --no-confirm

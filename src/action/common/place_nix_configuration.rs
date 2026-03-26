@@ -42,7 +42,7 @@ impl PlaceNixConfiguration {
         nix_build_group_name: String,
         ssl_cert_file: Option<PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
-        enable_experimental: bool,
+        disable_experimental: bool,
         force: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let extra_conf = Self::parse_extra_conf(extra_conf)?;
@@ -52,14 +52,14 @@ impl PlaceNixConfiguration {
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
         let standard_nix_config = Some(Self::setup_standard_config(
             maybe_trusted_users,
-            enable_experimental,
+            disable_experimental,
         )?);
 
         let custom_nix_config = Self::setup_extra_config(
             extra_conf,
             nix_build_group_name,
             configured_ssl_cert_file.as_ref(),
-            enable_experimental,
+            disable_experimental,
         )?;
 
         let create_directory = CreateDirectory::plan(NIX_CONF_FOLDER, None, None, 0o0755, force)
@@ -98,12 +98,12 @@ impl PlaceNixConfiguration {
 
     fn setup_standard_config(
         maybe_trusted_users: Option<&String>,
-        enable_experimental: bool,
+        disable_experimental: bool,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let mut nix_config = nix_config_parser::NixConfig::new();
         let settings = nix_config.settings_mut();
 
-        if enable_experimental {
+        if !disable_experimental {
             let experimental_features = ["nix-command", "flakes"];
             settings.insert(
                 "extra-experimental-features".to_string(),
@@ -187,7 +187,7 @@ impl PlaceNixConfiguration {
         mut extra_conf: nix_config_parser::NixConfig,
         nix_build_group_name: String,
         ssl_cert_file: Option<&PathBuf>,
-        enable_experimental: bool,
+        disable_experimental: bool,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let settings = extra_conf.settings_mut();
 
@@ -213,8 +213,8 @@ impl PlaceNixConfiguration {
         // want their setting to take effect (and probably have no opinion on or would even prefer
         // our standard experimental features continue to take effect).
         // NOTE(mkenigs): we only need to do this if we set experimental
-        // features, which we only do when `enable_experimental` is true
-        if enable_experimental
+        // features, which we only do when `disable_experimental` is false
+        if !disable_experimental
             && let Some((idx, _key, experimental_features)) =
                 settings.shift_remove_full(EXPERIMENTAL_FEATURES_CONF_NAME)
         {
@@ -388,9 +388,15 @@ mod tests {
             format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
         )])?;
 
-        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None, false)?;
-        let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None, true)?;
+        let disable_experimental = false;
+        let standard_nix_config =
+            PlaceNixConfiguration::setup_standard_config(None, disable_experimental)?;
+        let custom_nix_config = PlaceNixConfiguration::setup_extra_config(
+            extra_conf,
+            String::from("foo"),
+            None,
+            disable_experimental,
+        )?;
         dbg!(&custom_nix_config);
         dbg!(custom_nix_config.settings());
         dbg!(
@@ -399,8 +405,17 @@ mod tests {
                 .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
         );
 
+        let standard_features = standard_nix_config
+            .settings()
+            .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
+            .unwrap();
         assert!(
-            custom_nix_config
+            standard_features.contains("nix-command") && standard_features.contains("flakes"),
+            "standard config should not contain extra-experimental-features when disable_experimental is true"
+        );
+
+        assert!(
+            standard_nix_config
                 .settings()
                 .get(EXPERIMENTAL_FEATURES_CONF_NAME)
                 .is_none(),
@@ -457,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn enable_experimental() -> eyre::Result<()> {
+    fn disable_experimental() -> eyre::Result<()> {
         let nix_conf_dir = tempfile::tempdir()?;
         let nix_conf_path = nix_conf_dir.path().join("nix.conf");
         let nix_custom_conf_path = nix_conf_dir.path().join("nix.custom.conf");
@@ -466,41 +481,38 @@ mod tests {
             format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
         )])?;
 
-        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None, true)?;
-        let custom_nix_config =
-            PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None, true)?;
+        let disable_experimental = true;
+        let standard_nix_config =
+            PlaceNixConfiguration::setup_standard_config(None, disable_experimental)?;
+        let custom_nix_config = PlaceNixConfiguration::setup_extra_config(
+            extra_conf,
+            String::from("foo"),
+            None,
+            disable_experimental,
+        )?;
 
         assert!(
             standard_nix_config
                 .settings()
-                .get("extra-experimental-features")
-                .unwrap()
-                .contains("nix-command"),
-            "standard config should contain extra-experimental-features when enable_experimental is true"
-        );
-        assert!(
-            standard_nix_config
-                .settings()
-                .get("extra-experimental-features")
-                .unwrap()
-                .contains("flakes"),
-            "standard config should contain flakes in extra-experimental-features when enable_experimental is true"
+                .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
+                .is_none(),
+            "standard config should not contain extra-experimental-features when disable_experimental is true"
         );
 
         assert!(
             custom_nix_config
                 .settings()
                 .get(EXPERIMENTAL_FEATURES_CONF_NAME)
-                .is_none(),
-            "experimental-features in custom conf was removed"
+                .unwrap()
+                .contains("foobar"),
+            "experimental-features in custom conf was kept as-is when disable_experimental is true"
         );
         assert!(
             custom_nix_config
                 .settings()
                 .get(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
-                .unwrap()
-                .contains("foobar"),
-            "experimental-features in custom conf was renamed to extra-experimental-features"
+                .is_none(),
+            "extra-experimental-features should not exist when disable_experimental is true"
         );
 
         let mut place_nix_configuration = StatefulAction::uncompleted(PlaceNixConfiguration {
@@ -536,17 +548,14 @@ mod tests {
 
         let standard_conf = std::fs::read_to_string(nix_conf_path).unwrap();
         assert!(
-            standard_conf.contains("extra-experimental-features")
-                && standard_conf.contains("nix-command")
-                && standard_conf.contains("flakes"),
-            "standard conf should contain extra-experimental-features with nix-command and flakes"
+            !standard_conf.contains(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME),
+            "standard conf should not contain extra-experimental-features when disable_experimental is true"
         );
 
         let custom_conf = std::fs::read_to_string(nix_custom_conf_path).unwrap();
         assert!(
-            custom_conf.contains(EXTRA_EXPERIMENTAL_FEATURES_CONF_NAME)
-                && custom_conf.contains("foobar"),
-            "experimental-features in custom conf was renamed to extra-experimental-features"
+            custom_conf.contains(EXPERIMENTAL_FEATURES_CONF_NAME) && custom_conf.contains("foobar"),
+            "experimental-features in custom conf was kept as-is when disable_experimental is true"
         );
 
         Ok(())
