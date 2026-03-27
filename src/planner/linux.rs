@@ -27,6 +27,54 @@ pub struct Linux {
     pub settings: CommonSettings,
     #[cfg_attr(feature = "cli", clap(flatten))]
     pub init: InitSettings,
+
+    /// Install without touching anything outside `/nix`.
+    ///
+    /// Intended for running inside an unprivileged user namespace (as set up
+    /// by nix-user-chroot, toolbox, or a plain `unshare -Urm`) where `/etc`
+    /// is a read-only bind mount from the host and only a single uid/gid is
+    /// mapped. In that environment `groupadd` cannot allocate the nixbld gid
+    /// and any write under `/etc` fails with EROFS.
+    ///
+    /// Implies `--init none`, `--nix-build-user-count 0`, `--no-modify-profile`
+    /// and `--skip-nix-conf`, and additionally suppresses the `/etc/tmpfiles.d`
+    /// and `/etc/environment` writes that are otherwise unconditional.
+    ///
+    /// The resulting install is single-user and daemonless. Callers are
+    /// responsible for setting `NIX_CONF_DIR` (typically `/nix/etc/nix`) and
+    /// putting the profile bin dir on `PATH`.
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            action(clap::ArgAction::SetTrue),
+            default_value = "false",
+            env = "NIX_INSTALLER_ROOTLESS"
+        )
+    )]
+    #[serde(default)]
+    pub rootless: bool,
+}
+
+impl Linux {
+    /// Apply the implications of `--rootless` to the flattened settings.
+    ///
+    /// clap has no "this flag forces these other flags" primitive, so we
+    /// resolve it here before planning. Returns the effective settings so
+    /// `plan()` can stay oblivious to whether the user spelled out the
+    /// individual flags or used the shorthand.
+    fn resolve_rootless(&self) -> (CommonSettings, InitSettings) {
+        let mut settings = self.settings.clone();
+        let mut init = self.init.clone();
+        if self.rootless {
+            settings.nix_build_user_count = 0;
+            settings.modify_profile = false;
+            settings.skip_nix_conf = true;
+            init.init = InitSystem::None;
+            init.start_daemon = false;
+        }
+        (settings, init)
+    }
 }
 
 #[typetag::serde(name = "linux")]
@@ -35,10 +83,12 @@ impl Planner for Linux {
         Ok(Self {
             settings: CommonSettings::try_default()?,
             init: InitSettings::try_default()?,
+            rootless: false,
         })
     }
 
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        let (settings, init) = self.resolve_rootless();
         let has_selinux = detect_selinux()?;
 
         let mut shell_profile_locations = ShellProfileLocations::default();
@@ -75,18 +125,30 @@ impl Planner for Linux {
             CreateDirectory::plan("/nix", None, None, 0o0755, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-            ProvisionNix::plan(&self.settings.clone())
-                .map_err(PlannerError::Action)?
-                .boxed(),
-            CreateUsersAndGroups::plan(self.settings.clone())
-                .map_err(PlannerError::Action)?
-                .boxed(),
-            ConfigureNix::plan(shell_profile_locations, &self.settings)
+            ProvisionNix::plan(&settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
         ];
 
-        if LinuxDistro::detect() == LinuxDistro::Arch {
+        // A build-user count of 0 means no nixbld group/users. Skipping the
+        // action entirely (rather than letting it plan an empty user list)
+        // avoids the unconditional groupadd, which cannot succeed inside a
+        // single-uid user namespace.
+        if settings.nix_build_user_count > 0 {
+            plan.push(
+                CreateUsersAndGroups::plan(settings.clone())
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+
+        plan.push(
+            ConfigureNix::plan(shell_profile_locations, &settings)
+                .map_err(PlannerError::Action)?
+                .boxed(),
+        );
+
+        if !self.rootless && LinuxDistro::detect() == LinuxDistro::Arch {
             // On Arch, /etc/bash.bashrc guards non-interactive shells with
             // `[[ $- != *i* ]] && return`, so the Nix snippet we prepend there
             // never runs for `ssh host 'command'` (non-interactive, non-login).
@@ -114,11 +176,18 @@ impl Planner for Linux {
             );
         }
 
+        // tmpfiles.d is only consulted by systemd-tmpfiles; a rootless
+        // install has no init and /etc is read-only anyway.
+        if !self.rootless {
+            plan.push(
+                CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+
         plan.extend([
-            CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
-                .map_err(PlannerError::Action)?
-                .boxed(),
-            ConfigureUpstreamInitService::plan(self.init.init, self.init.start_daemon)
+            ConfigureUpstreamInitService::plan(init.init, init.start_daemon)
                 .map_err(PlannerError::Action)?
                 .boxed(),
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
@@ -130,11 +199,16 @@ impl Planner for Linux {
     }
 
     fn settings(&self) -> Result<HashMap<String, serde_json::Value>, InstallSettingsError> {
-        let Self { settings, init } = self;
+        let Self {
+            settings,
+            init,
+            rootless,
+        } = self;
         let mut map = HashMap::default();
 
         map.extend(settings.settings()?);
         map.extend(init.settings()?);
+        map.insert("rootless".into(), serde_json::to_value(rootless)?);
 
         Ok(map)
     }
@@ -165,9 +239,10 @@ impl Planner for Linux {
     }
 
     fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+        let (_, init) = self.resolve_rootless();
         check_not_wsl1()?;
 
-        if self.init.init == InitSystem::Systemd && self.init.start_daemon {
+        if init.init == InitSystem::Systemd && init.start_daemon {
             check_systemd_active()?;
         }
 
@@ -175,13 +250,14 @@ impl Planner for Linux {
     }
 
     fn pre_install_check(&self) -> Result<(), PlannerError> {
+        let (_, init) = self.resolve_rootless();
         check_not_nixos()?;
 
         check_nix_not_already_installed()?;
 
         check_not_wsl1()?;
 
-        if self.init.init == InitSystem::Systemd && self.init.start_daemon {
+        if init.init == InitSystem::Systemd && init.start_daemon {
             check_systemd_active()?;
         }
 
