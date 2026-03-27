@@ -159,6 +159,10 @@
             sharedAttrs
             // {
               inherit cargoArtifacts;
+              # Tests run as a separate derivation (see `test` below) so the
+              # binary and test suite can build in parallel and we avoid
+              # paying the LTO link cost twice inside one derivation.
+              doCheck = false;
               env = sharedAttrs.env // {
                 RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
                 # The nixpkgs 25.11 darwin stdenv adds libiconv to NIX_LDFLAGS,
@@ -171,6 +175,16 @@
               postInstall = ''
                 cp nix-installer.sh $out/bin/nix-installer.sh
               '';
+            }
+          );
+
+          test = craneLib.cargoTest (
+            sharedAttrs
+            // {
+              inherit cargoArtifacts;
+              # Override the release profile's fat LTO: tests only need to
+              # pass, not ship, and LTO adds ~55s of link time per build.
+              CARGO_PROFILE_RELEASE_LTO = "off";
             }
           );
 
@@ -320,7 +334,7 @@
               touch $out
             '';
 
-          inherit (craneBuilds) clippy;
+          inherit (craneBuilds) clippy test;
         }
         // vmTestChecks
         // containerTestChecks
