@@ -19,7 +19,14 @@ Place Nix and it's requirements onto the target
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(tag = "action_name", rename = "provision_nix")]
 pub struct ProvisionNix {
-    nix_store_gid: u32,
+    /// `None` when no build group is being created (`--nix-build-user-count 0`),
+    /// which also covers `--rootless`. Chowning to a nonexistent gid only
+    /// produces a wall of EINVAL warnings in a single-uid user namespace.
+    ///
+    /// Receipt compatibility: old receipts store this as a bare integer,
+    /// which serde deserializes into `Some(gid)`. `Some` serializes back to
+    /// a bare integer, so non-rootless receipts are byte-identical to before.
+    nix_store_gid: Option<u32>,
 
     pub(crate) fetch_nix: StatefulAction<FetchAndUnpackNix>,
     pub(crate) create_nix_tree: StatefulAction<CreateNixTree>,
@@ -35,7 +42,8 @@ impl ProvisionNix {
         let move_unpacked_nix =
             MoveUnpackedNix::plan(PathBuf::from(SCRATCH_DIR)).map_err(Self::error)?;
         Ok(Self {
-            nix_store_gid: settings.nix_build_group_id,
+            nix_store_gid: (settings.nix_build_user_count > 0)
+                .then_some(settings.nix_build_group_id),
             fetch_nix,
             create_nix_tree,
             move_unpacked_nix,
@@ -71,12 +79,14 @@ impl Action for ProvisionNix {
         buf.append(&mut create_nix_tree.describe_execute());
         buf.append(&mut move_unpacked_nix.describe_execute());
 
-        buf.push(ActionDescription::new(
-            "Synchronize /nix/store ownership".to_string(),
-            vec![format!(
-                "Will update existing files in the Nix Store to use the Nix build group ID {nix_store_gid}"
-            )],
-        ));
+        if let Some(gid) = nix_store_gid {
+            buf.push(ActionDescription::new(
+                "Synchronize /nix/store ownership".to_string(),
+                vec![format!(
+                    "Will update existing files in the Nix Store to use the Nix build group ID {gid}"
+                )],
+            ));
+        }
 
         buf
     }
@@ -90,7 +100,9 @@ impl Action for ProvisionNix {
 
         self.move_unpacked_nix.try_execute().map_err(Self::error)?;
 
-        ensure_nix_store_group(self.nix_store_gid).map_err(Self::error)?;
+        if let Some(gid) = self.nix_store_gid {
+            ensure_nix_store_group(gid).map_err(Self::error)?;
+        }
 
         Ok(())
     }
