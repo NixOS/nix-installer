@@ -118,8 +118,44 @@ impl CommandExecute for Install {
         } else {
             let planner = match maybe_planner {
                 Some(planner) => planner,
-                None => BuiltinPlanner::from_common_settings(settings.clone())
-                    .map_err(|e| eyre::eyre!(e))?,
+                None => {
+                    let mut settings_to_apply = settings.clone();
+
+                    // Only prompt if the user hasn't already opted in via
+                    // --enable-flakes / NIX_INSTALLER_ENABLE_FLAKES.
+                    if !no_confirm && !settings_to_apply.enable_flakes {
+                        eprintln!("\n{}\n", "Welcome to the Nix installer!".bold());
+
+                        // Ask about flakes.
+                        match interaction::prompt(
+                            "Flakes are an experimental feature, but widely used in the community.\nYou can change this later in `/etc/nix/nix.conf`.\n\nEnable flakes?",
+                            PromptChoice::Yes,
+                            true,
+                        )? {
+                            PromptChoice::Yes => settings_to_apply.enable_flakes = true,
+                            PromptChoice::No => settings_to_apply.enable_flakes = false,
+                            PromptChoice::Explain => {
+                                // currently_explaining=true hides the explain
+                                // option, but a user typing 'e' still parses.
+                                // Treat it as a no-op / keep default (false).
+                            },
+                        }
+
+                        // Notify the user about the nix command.
+                        let nixcmd_message = format!(
+                            "{}{}{}{}{}",
+                            "\nNote:".bold(),
+                            " the experimental",
+                            " nix-command ".bold(),
+                            "feature has been enabled.\n",
+                            "Commands starting with `nix ` (e.g. `nix build`) are subject to interface changes.\n\n"
+                        );
+                        eprint!("{nixcmd_message}");
+                    }
+
+                    BuiltinPlanner::from_common_settings(settings_to_apply)
+                        .map_err(|e| eyre::eyre!(e))?
+                },
             };
 
             if let Some(existing_receipt) = existing_receipt {
