@@ -199,16 +199,16 @@ impl Planner for Linux {
     }
 
     fn settings(&self) -> Result<HashMap<String, serde_json::Value>, InstallSettingsError> {
-        let Self {
-            settings,
-            init,
-            rootless,
-        } = self;
+        // Report the *resolved* settings so downstream consumers (the receipt,
+        // daemon_expected(), configured_settings diffing) see what --rootless
+        // actually implied rather than the raw clap defaults. Otherwise the
+        // plan executor waits 10s for a daemon socket that will never appear.
+        let (settings, init) = self.resolve_rootless();
         let mut map = HashMap::default();
 
         map.extend(settings.settings()?);
         map.extend(init.settings()?);
-        map.insert("rootless".into(), serde_json::to_value(rootless)?);
+        map.insert("rootless".into(), serde_json::to_value(self.rootless)?);
 
         Ok(map)
     }
