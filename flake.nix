@@ -6,7 +6,7 @@
 
     crane.url = "github:ipetkov/crane/v0.20.0";
 
-    nix.url = "github:NixOS/nix/2.34.2";
+    nix.url = "github:NixOS/nix/2.34.4";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
 
