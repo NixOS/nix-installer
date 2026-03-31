@@ -71,11 +71,8 @@ def main() -> None:
     current_crate_version = parse_version(current_crate)
     latest_nix_version = parse_version(latest_nix)
 
-    # Reset patch on major/minor bump, else increment
-    if current_nix_version[:2] != latest_nix_version[:2]:
-        new_crate = f"{latest_nix_version[0]}.{latest_nix_version[1]}.0"
-    else:
-        new_crate = f"{current_crate_version[0]}.{current_crate_version[1]}.{current_crate_version[2] + 1}"
+    # Match Nix version exactly
+    new_crate = f"{latest_nix_version[0]}.{latest_nix_version[1]}.{latest_nix_version[2]}"
 
     print(f"Nix: {current_nix} -> {latest_nix}")
     print(f"Crate: {current_crate} -> {new_crate}")
