@@ -62,7 +62,7 @@ tracing = { version = "0.1.36", default-features = false, features = [
 tracing-error = { version = "0.2.0", default-features = false, optional = true, features = [
   "traced-error",
 ] }
-tracing-subscriber = { version = "0.3.22", default-features = false, features = [
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
   "std",
   "registry",
   "fmt",
