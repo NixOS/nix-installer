@@ -20,6 +20,12 @@ This one-liner is the quickest way to get started on any supported system:
 curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ```
 
+To also enable the experimental `flakes` and `nix-command` features:
+
+```shell
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable-flakes
+```
+
 | Platform                                                             |    Multi user?    | `root` only |     Maturity      |
 | -------------------------------------------------------------------- | :---------------: | :---------: | :---------------: |
 | Linux (`x86_64` and `aarch64`)                                       | ✓ (via [systemd]) |      ✓      |      Stable       |
