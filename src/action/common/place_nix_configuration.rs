@@ -43,13 +43,17 @@ impl PlaceNixConfiguration {
         ssl_cert_file: Option<PathBuf>,
         extra_conf: Vec<UrlOrPathOrString>,
         force: bool,
+        enable_flakes: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let extra_conf = Self::parse_extra_conf(extra_conf)?;
 
         let configured_ssl_cert_file = ssl_cert_file;
 
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
-        let standard_nix_config = Some(Self::setup_standard_config(maybe_trusted_users)?);
+        let standard_nix_config = Some(Self::setup_standard_config(
+            maybe_trusted_users,
+            enable_flakes,
+        )?);
 
         let custom_nix_config = Self::setup_extra_config(
             extra_conf,
@@ -93,11 +97,15 @@ impl PlaceNixConfiguration {
 
     fn setup_standard_config(
         maybe_trusted_users: Option<&String>,
+        enable_flakes: bool,
     ) -> Result<nix_config_parser::NixConfig, ActionError> {
         let mut nix_config = nix_config_parser::NixConfig::new();
         let settings = nix_config.settings_mut();
 
-        let experimental_features = ["nix-command", "flakes"];
+        let mut experimental_features = vec!["nix-command"];
+        if enable_flakes {
+            experimental_features.push("flakes");
+        }
         settings.insert(
             "extra-experimental-features".to_string(),
             experimental_features.join(" "),
@@ -115,10 +123,12 @@ impl PlaceNixConfiguration {
             "(nix:$name)\\040".to_string(),
         );
         settings.insert("max-jobs".to_string(), "auto".to_string());
-        settings.insert(
-            "extra-nix-path".to_string(),
-            "nixpkgs=flake:nixpkgs".to_string(),
-        );
+        if enable_flakes {
+            settings.insert(
+                "extra-nix-path".to_string(),
+                "nixpkgs=flake:nixpkgs".to_string(),
+            );
+        }
 
         // NOTE(cole-h): This is a workaround to hopefully unbreak users of Cachix.
         // When `cachix use`ing a cache, the Cachix CLI will sanity-check the system configuration
@@ -372,7 +382,7 @@ mod tests {
             format!("{EXPERIMENTAL_FEATURES_CONF_NAME} = foobar"),
         )])?;
 
-        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None)?;
+        let standard_nix_config = PlaceNixConfiguration::setup_standard_config(None, true)?;
         let custom_nix_config =
             PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
         dbg!(&custom_nix_config);
@@ -453,7 +463,7 @@ mod tests {
         let maybe_trusted_users = extra_conf.settings().get(TRUSTED_USERS_CONF_NAME);
 
         let standard_nix_config =
-            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users)?;
+            PlaceNixConfiguration::setup_standard_config(maybe_trusted_users, true)?;
         let custom_nix_config =
             PlaceNixConfiguration::setup_extra_config(extra_conf, String::from("foo"), None)?;
 

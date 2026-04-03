@@ -181,6 +181,19 @@ pub struct CommonSettings {
         )
     )]
     pub add_channel: bool,
+
+    /// Enable the `flakes` experimental feature.
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            action(ArgAction::SetTrue),
+            default_value = "false",
+            global = true,
+            env = "NIX_INSTALLER_ENABLE_FLAKES"
+        )
+    )]
+    pub enable_flakes: bool,
 }
 
 pub(crate) fn default_nix_build_user_id_base() -> u32 {
@@ -232,6 +245,7 @@ impl CommonSettings {
             force: false,
             skip_nix_conf: false,
             add_channel: false,
+            enable_flakes: false,
         })
     }
 
@@ -249,6 +263,7 @@ impl CommonSettings {
             force,
             skip_nix_conf,
             add_channel,
+            enable_flakes,
         } = self;
         let mut map = HashMap::default();
 
@@ -282,6 +297,7 @@ impl CommonSettings {
         map.insert("skip_nix_conf".into(), serde_json::to_value(skip_nix_conf)?);
 
         map.insert("add_channel".into(), serde_json::to_value(add_channel)?);
+        map.insert("enable_flakes".into(), serde_json::to_value(enable_flakes)?);
 
         Ok(map)
     }

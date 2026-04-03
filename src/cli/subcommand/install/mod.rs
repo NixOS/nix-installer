@@ -78,7 +78,7 @@ impl CommandExecute for Install {
             no_confirm,
             plan,
             planner: maybe_planner,
-            settings,
+            mut settings,
             explain,
         } = self;
 
@@ -116,8 +116,43 @@ impl CommandExecute for Install {
                 std::fs::read_to_string(&plan_path).wrap_err("Reading plan")?;
             serde_json::from_str(&install_plan_string)?
         } else {
+            // Only prompt if the user hasn't already opted in via
+            // --enable-flakes / NIX_INSTALLER_ENABLE_FLAKES.
+            if !no_confirm && !settings.enable_flakes {
+                eprintln!("\n{}\n", "Welcome to the Nix installer!".bold());
+
+                // Ask about flakes.
+                match interaction::prompt(
+                    "Flakes are an experimental feature, but widely used in the community.\nYou can change this later in `/etc/nix/nix.conf`.\n\nEnable flakes?",
+                    PromptChoice::Yes,
+                    true,
+                )? {
+                    PromptChoice::Yes => settings.enable_flakes = true,
+                    PromptChoice::No => settings.enable_flakes = false,
+                    PromptChoice::Explain => {
+                        // currently_explaining=true hides the explain
+                        // option, but a user typing 'e' still parses.
+                        // Treat it as a no-op / keep default (false).
+                    },
+                }
+
+                // Notify the user about the nix command.
+                let nixcmd_message = format!(
+                    "{}{}{}{}{}",
+                    "\nNote:".bold(),
+                    " the experimental",
+                    " nix-command ".bold(),
+                    "feature has been enabled.\n",
+                    "Commands starting with `nix ` (e.g. `nix build`) are subject to interface changes.\n\n"
+                );
+                eprint!("{nixcmd_message}");
+            }
+
             let planner = match maybe_planner {
-                Some(planner) => planner,
+                Some(mut planner) => {
+                    planner.common_settings_mut().enable_flakes = settings.enable_flakes;
+                    planner
+                },
                 None => BuiltinPlanner::from_common_settings(settings.clone())
                     .map_err(|e| eyre::eyre!(e))?,
             };

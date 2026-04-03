@@ -164,7 +164,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --init none --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --init none --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 ```
@@ -187,7 +187,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl systemd -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --no-start-daemon --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --no-start-daemon --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 CMD [ "/bin/systemd" ]
@@ -363,6 +363,7 @@ These settings are available for all commands.
 
 | Flag(s)                    | Description                                                                                        | Default (if any)                     | Environment variable                   |
 | -------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| `--enable-flakes`          | Enable the `flakes` experimental feature                                                           | `false`                              | `NIX_INSTALLER_ENABLE_FLAKES`          |
 | `--explain`                | Provide an explanation of the changes the installation process will make to your system            | `false`                              | `NIX_INSTALLER_EXPLAIN`                |
 | `--extra-conf`             | Extra configuration lines for `/etc/nix.conf`                                                      |                                      | `NIX_INSTALLER_EXTRA_CONF`             |
 | `--force`                  | Whether the installer should forcibly recreate files it finds existing                             | `false`                              | `NIX_INSTALLER_FORCE`                  |
