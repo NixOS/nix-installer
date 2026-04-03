@@ -164,7 +164,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --init none --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --init none --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 ```
@@ -187,7 +187,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl systemd -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --no-start-daemon --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --no-start-daemon --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 CMD [ "/bin/systemd" ]
