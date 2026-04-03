@@ -50,7 +50,7 @@ serde = { version = "1.0.203", default-features = false, features = [
 serde_json = { version = "1.0.149", default-features = false, features = [
   "std",
 ] }
-tar = { version = "0.4.38", default-features = false, features = ["xattr"] }
+tar = { version = "0.4.45", default-features = false, features = ["xattr"] }
 target-lexicon = { version = "0.13.4", default-features = false, features = [
   "std",
 ] }
