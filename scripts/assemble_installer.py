@@ -2,6 +2,7 @@
 """Assemble and release nix-installer binaries from Hydra builds."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -179,6 +180,16 @@ def main() -> None:
     with open(substituted_file, "w", encoding="utf-8") as output_file:
         output_file.write(updated_content)
     release_files.append(substituted_file)
+
+    # Write SHA256SUMS in the format sha256sum -c expects.
+    # Gives users a low-tech verification path that does not require gh,
+    # and the file itself is covered by the attestation.
+    sums_file = f"{out_dir}/SHA256SUMS"
+    with open(sums_file, "w", encoding="utf-8") as f:
+        for path in release_files:
+            digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+            f.write(f"{digest}  {os.path.basename(path)}\n")
+    release_files.append(sums_file)
 
     # Create the GitHub release
     create_release(version, release_files)
