@@ -3,10 +3,10 @@
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import tomllib
 import urllib.request
 from string import Template
@@ -113,6 +113,11 @@ def main() -> None:
         default=None,
         help="Hydra evaluation ID to use (defaults to latest matching HEAD)",
     )
+    parser.add_argument(
+        "--out-dir",
+        default="release-artifacts",
+        help="Directory to write release artifacts (kept for attestation)",
+    )
     args = parser.parse_args()
 
     # Fetch and select the evaluation
@@ -145,35 +150,38 @@ def main() -> None:
     # Get version from Cargo.toml
     version = get_version()
 
-    # Create release with all installer binaries
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        release_files: list[str] = []
+    # Create release with all installer binaries.
+    # Artifacts are written to a persistent directory so the workflow
+    # can generate build provenance attestations after upload.
+    out_dir = args.out_dir
+    os.makedirs(out_dir, exist_ok=True)
+    release_files: list[str] = []
 
-        # Copy installer binaries
-        for installer_url, system in installers:
-            installer_file = f"{tmpdirname}/nix-installer-{system}"
-            release_files.append(installer_file)
-            print(f"Copying {installer_url} to {installer_file}")
-            shutil.copy(f"{installer_url}/bin/nix-installer", installer_file)
+    # Copy installer binaries
+    for installer_url, system in installers:
+        installer_file = f"{out_dir}/nix-installer-{system}"
+        release_files.append(installer_file)
+        print(f"Copying {installer_url} to {installer_file}")
+        shutil.copy(f"{installer_url}/bin/nix-installer", installer_file)
 
-        # Substitute version in nix-installer.sh
-        original_file = "nix-installer.sh"
-        with open(original_file, "r") as nix_installer_sh:
-            nix_installer_sh_contents = nix_installer_sh.read()
+    # Substitute version in nix-installer.sh
+    original_file = "nix-installer.sh"
+    with open(original_file, "r") as nix_installer_sh:
+        nix_installer_sh_contents = nix_installer_sh.read()
 
-        template = Template(nix_installer_sh_contents)
-        updated_content = template.safe_substitute(
-            assemble_installer_templated_version=version
-        )
+    template = Template(nix_installer_sh_contents)
+    updated_content = template.safe_substitute(
+        assemble_installer_templated_version=version
+    )
 
-        # Write the modified content to the output file
-        substituted_file = f"{tmpdirname}/nix-installer.sh"
-        with open(substituted_file, "w", encoding="utf-8") as output_file:
-            output_file.write(updated_content)
-        release_files.append(substituted_file)
+    # Write the modified content to the output file
+    substituted_file = f"{out_dir}/nix-installer.sh"
+    with open(substituted_file, "w", encoding="utf-8") as output_file:
+        output_file.write(updated_content)
+    release_files.append(substituted_file)
 
-        # Create the GitHub release
-        create_release(version, release_files)
+    # Create the GitHub release
+    create_release(version, release_files)
 
 
 if __name__ == "__main__":
