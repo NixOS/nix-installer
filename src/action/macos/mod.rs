@@ -14,6 +14,7 @@ pub(crate) mod encrypt_apfs_volume;
 pub(crate) mod kickstart_launchctl_service;
 pub(crate) mod set_tmutil_exclusion;
 pub(crate) mod set_tmutil_exclusions;
+pub(crate) mod suppress_volume_indexing;
 pub(crate) mod unmount_apfs_volume;
 
 use std::fs;
@@ -34,6 +35,7 @@ pub use kickstart_launchctl_service::KickstartLaunchctlService;
 use serde::Deserialize;
 pub use set_tmutil_exclusion::SetTmutilExclusion;
 pub use set_tmutil_exclusions::SetTmutilExclusions;
+pub use suppress_volume_indexing::SuppressVolumeIndexing;
 pub use unmount_apfs_volume::UnmountApfsVolume;
 
 use crate::execute_command;
