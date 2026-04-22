@@ -73,6 +73,7 @@ pub mod action;
 pub mod cli;
 mod error;
 mod os;
+pub mod payload;
 mod plan;
 pub mod planner;
 mod profile;

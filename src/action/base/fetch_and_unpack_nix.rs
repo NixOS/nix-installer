@@ -5,7 +5,7 @@ use tracing::{Span, span};
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
-    settings::{EMBEDDED_NIX_TARBALL, NIX_VERSION},
+    settings::{embedded_nix_tarball, nix_version},
     util::OnMissing,
 };
 
@@ -34,7 +34,7 @@ impl Action for FetchAndUnpackNix {
     fn tracing_synopsis(&self) -> String {
         format!(
             "Unpack embedded Nix {} to `{}`",
-            NIX_VERSION.trim(),
+            nix_version(),
             self.dest.display()
         )
     }
@@ -62,7 +62,7 @@ impl Action for FetchAndUnpackNix {
         }
 
         // Decompress zstd
-        let zstd_reader = Cursor::new(EMBEDDED_NIX_TARBALL);
+        let zstd_reader = Cursor::new(embedded_nix_tarball());
         let tar_data =
             zstd::decode_all(zstd_reader).map_err(|e| Self::error(UnpackError::Zstd(e)))?;
 

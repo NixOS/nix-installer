@@ -14,16 +14,24 @@ pub const SCRATCH_DIR: &str = "/nix/temp-install-dir";
 pub const DEFAULT_NIX_BUILD_USER_GROUP_NAME: &str = "nixbld";
 
 /// The embedded Nix tarball (zstd compressed)
-pub const EMBEDDED_NIX_TARBALL: &[u8] = include_bytes!(concat!(env!("NIX_TARBALL_PATH")));
+pub fn embedded_nix_tarball() -> &'static [u8] {
+    &crate::payload::get().tarball
+}
 
 /// The store path of the nix package in the embedded tarball
-pub const NIX_STORE_PATH: &str = env!("NIX_STORE_PATH");
+pub fn nix_store_path() -> &'static str {
+    crate::payload::get().nix_store_path.trim()
+}
 
 /// The store path of the nss-cacert package in the embedded tarball
-pub const NSS_CACERT_STORE_PATH: &str = env!("NSS_CACERT_STORE_PATH");
+pub fn nss_cacert_store_path() -> &'static str {
+    crate::payload::get().cacert_store_path.trim()
+}
 
 /// The version of Nix embedded in this installer
-pub const NIX_VERSION: &str = env!("NIX_VERSION");
+pub fn nix_version() -> &'static str {
+    crate::payload::get().nix_version.trim()
+}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]

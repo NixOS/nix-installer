@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Append a Nix closure payload to a bare ``nix-installer`` binary.
+
+The Rust crate is built without any embedded Nix; this concatenates the
+zstd tarball + metadata as a trailer the binary reads at runtime, so the
+expensive compile stays cacheable across Nix revisions.
+
+Layout (little-endian), appended after the executable::
+
+    [tarball] [metadata JSON] u32:meta_len u64:tarball_len b"NIXINST1"
+
+On macOS the result is ``__LINKEDIT``-patched and ad-hoc re-signed so
+the kernel accepts it; the runtime reader scans backwards for the magic
+and therefore tolerates the signature blob that follows.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import struct
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+MAGIC = b"NIXINST1"
+MH_MAGIC_64 = 0xFEEDFACF
+LC_SEGMENT_64 = 0x19
+LC_SYMTAB = 0x02
+MACH_HEADER_64_SIZE = 32
+
+
+def is_macho(buf: bytes | bytearray) -> bool:
+    return len(buf) >= 4 and struct.unpack_from("<I", buf, 0)[0] == MH_MAGIC_64
+
+
+def strip_signature(exe: bytes) -> bytes:
+    """Return *exe* with any code signature removed.
+
+    ``codesign`` insists ``__LINKEDIT`` ends at EOF, so the existing
+    signature has to go before we append.
+    """
+    with tempfile.NamedTemporaryFile(delete=False) as t:
+        t.write(exe)
+        tmp = Path(t.name)
+    try:
+        subprocess.run(
+            ["/usr/bin/codesign", "--remove-signature", str(tmp)],
+            check=False,
+            capture_output=True,
+        )
+        return tmp.read_bytes()
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def extend_linkedit(exe: bytearray) -> None:
+    """Grow ``__LINKEDIT`` / ``LC_SYMTAB`` to the new EOF.
+
+    After this, ``codesign -s -`` accepts the file and places the new
+    signature *after* our trailer.
+    """
+    file_len = len(exe)
+    (ncmds,) = struct.unpack_from("<I", exe, 16)
+    off = MACH_HEADER_64_SIZE
+    for _ in range(ncmds):
+        cmd, cmdsize = struct.unpack_from("<II", exe, off)
+        body = off + 8
+        if cmd == LC_SEGMENT_64 and exe[body : body + 10] == b"__LINKEDIT":
+            (fileoff,) = struct.unpack_from("<Q", exe, body + 32)
+            new = file_len - fileoff
+            struct.pack_into("<Q", exe, body + 24, new)  # vmsize
+            struct.pack_into("<Q", exe, body + 40, new)  # filesize
+        elif cmd == LC_SYMTAB:
+            (stroff,) = struct.unpack_from("<I", exe, body + 8)
+            struct.pack_into("<I", exe, body + 12, (file_len - stroff) & 0xFFFFFFFF)
+        off += cmdsize
+
+
+def build_trailer(tarball: bytes, meta: dict[str, str]) -> bytes:
+    meta_buf = json.dumps(meta, separators=(",", ":")).encode()
+    return tarball + meta_buf + struct.pack("<IQ", len(meta_buf), len(tarball)) + MAGIC
+
+
+def env(name: str) -> str | None:
+    return os.environ.get(name)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Flags fall back to NIX_INSTALLER_DEV_* env vars "
+        "(set by `nix develop`).",
+    )
+    p.add_argument("--input", required=True, type=Path)
+    p.add_argument(
+        "--tarball",
+        type=Path,
+        default=env("NIX_INSTALLER_DEV_TARBALL"),
+    )
+    p.add_argument(
+        "--nix-store-path",
+        default=env("NIX_INSTALLER_DEV_NIX_PATH"),
+    )
+    p.add_argument(
+        "--cacert-store-path",
+        default=env("NIX_INSTALLER_DEV_CACERT_PATH"),
+    )
+    p.add_argument(
+        "--nix-version",
+        default=env("NIX_INSTALLER_DEV_NIX_VERSION"),
+    )
+    p.add_argument("--output", "-o", required=True, type=Path)
+    args = p.parse_args()
+
+    for name in ("tarball", "nix_store_path", "cacert_store_path", "nix_version"):
+        if getattr(args, name) is None:
+            p.error(f"--{name.replace('_', '-')} (or its env var) is required")
+
+    exe = bytearray(args.input.read_bytes())
+    macho = is_macho(exe)
+    if macho:
+        exe = bytearray(strip_signature(bytes(exe)))
+
+    exe += build_trailer(
+        args.tarball.read_bytes(),
+        {
+            "nix_store_path": args.nix_store_path,
+            "cacert_store_path": args.cacert_store_path,
+            "nix_version": args.nix_version,
+        },
+    )
+
+    if macho:
+        extend_linkedit(exe)
+
+    args.output.write_bytes(exe)
+    args.output.chmod(0o755)
+
+    if macho:
+        subprocess.run(
+            ["/usr/bin/codesign", "--force", "--sign", "-", str(args.output)],
+            check=True,
+        )
+
+    print(
+        f"wrote {args.output} ({len(exe)} bytes, embedded Nix {args.nix_version})",
+        file=sys.stderr,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::{
     action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
     execute_command,
-    settings::{NIX_STORE_PATH, NSS_CACERT_STORE_PATH},
+    settings::{nix_store_path, nss_cacert_store_path},
 };
 
 use std::process::Command;
@@ -84,8 +84,8 @@ impl Action for SetupChannels {
         // Place channel configuration
         self.create_file.try_execute()?;
 
-        let nix_pkg = PathBuf::from(NIX_STORE_PATH.trim());
-        let nss_ca_cert_pkg = PathBuf::from(NSS_CACERT_STORE_PATH.trim());
+        let nix_pkg = PathBuf::from(nix_store_path());
+        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path());
 
         // Update nixpkgs channel
         execute_command(
