@@ -170,7 +170,12 @@
           package =
             pkgs.runCommand "nix-installer-${tarballPkg.passthru.nixVersion}"
               {
-                nativeBuildInputs = [ pkgs.buildPackages.python3 ];
+                nativeBuildInputs = [
+                  pkgs.buildPackages.python3
+                ] ++ pkgs.lib.optionals stdenv.hostPlatform.isDarwin [
+                  pkgs.buildPackages.darwin.sigtool
+                  pkgs.buildPackages.darwin.cctools
+                ];
                 __structuredAttrs = true;
                 unsafeDiscardReferences.out = true;
                 passthru = { inherit bare; };
