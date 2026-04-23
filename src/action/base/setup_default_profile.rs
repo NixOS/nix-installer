@@ -6,7 +6,7 @@ use crate::{
     action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
     profile::WriteToDefaultProfile,
     set_env,
-    settings::{NIX_STORE_PATH, NIX_VERSION, NSS_CACERT_STORE_PATH},
+    settings::{nix_store_path, nix_version, nss_cacert_store_path},
 };
 
 use tracing::{Span, span};
@@ -52,11 +52,11 @@ impl Action for SetupDefaultProfile {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        let nix_pkg = PathBuf::from(NIX_STORE_PATH.trim());
-        let nss_ca_cert_pkg = PathBuf::from(NSS_CACERT_STORE_PATH.trim());
+        let nix_pkg = PathBuf::from(nix_store_path());
+        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path());
 
         // Find the unpacked nix directory (nix-VERSION-SYSTEM)
-        let nix_version = NIX_VERSION.trim();
+        let nix_version = nix_version();
         let found_nix_paths: Vec<_> = std::fs::read_dir(&self.unpacked_path)
             .map_err(|e| ActionErrorKind::ReadDir(self.unpacked_path.clone(), e))
             .map_err(Self::error)?

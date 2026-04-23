@@ -84,6 +84,7 @@
             # Use --hard-dereference to convert symlinks to regular files
             # Use --transform to rewrite /nix/store paths to $dir/store
             tar cf - \
+              --sort=name \
               --owner=0 --group=0 --mode=u+rw,uga+r \
               --mtime='1970-01-01' \
               --absolute-names \
@@ -92,7 +93,7 @@
               --transform "s,$NIX_STORE,$dir/store,S" \
               $TMPDIR/reginfo \
               $(cat ${installerClosureInfo}/store-paths) \
-              | zstd -19 -T0 -o $out/nix.tar.zst
+              | zstd -19 -T1 -o $out/nix.tar.zst
           '';
 
       # Shared crane build setup - returns { package, clippy, cargoArtifacts }
@@ -109,17 +110,12 @@
             inherit pkgs;
             system = stdenv.hostPlatform.system;
           };
-          # Get paths directly from passthru - no IFD!
-          nixStorePath = tarballPkg.passthru.nixStorePath;
-          cacertStorePath = tarballPkg.passthru.cacertStorePath;
-          nixVersion = tarballPkg.passthru.nixVersion;
           sharedAttrs = {
             src = pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.unions [
                 ./Cargo.toml
                 ./Cargo.lock
-                ./build.rs
                 ./src
                 ./tests
                 ./nix-installer.sh
@@ -127,8 +123,6 @@
                 ./rust-toolchain.toml
               ];
             };
-
-            nativeBuildInputs = [ tarballPkg ];
 
             # Required to link build scripts.
             depsBuildBuild = [ buildPackages.stdenv.cc ];
@@ -142,20 +136,12 @@
               "CXX_${stdenv.hostPlatform.rust.cargoEnvVarTarget}" = "${stdenv.cc.targetPrefix}c++";
               "CARGO_TARGET_${stdenv.hostPlatform.rust.cargoEnvVarTarget}_LINKER" = "${stdenv.cc.targetPrefix}cc";
               CARGO_BUILD_TARGET = stdenv.hostPlatform.rust.rustcTarget;
-              # Path to the embedded tarball
-              NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
-              # Store paths known at compile time (no IFD - these come from passthru)
-              NIX_STORE_PATH = nixStorePath;
-              NSS_CACERT_STORE_PATH = cacertStorePath;
-              NIX_VERSION = nixVersion;
             };
           };
           cargoArtifacts = craneLib.buildDepsOnly sharedAttrs;
-        in
-        {
-          inherit cargoArtifacts;
 
-          package = craneLib.buildPackage (
+          # Bare binary: no Nix closure yet.  Appended below via `pack`.
+          bare = craneLib.buildPackage (
             sharedAttrs
             // {
               inherit cargoArtifacts;
@@ -177,6 +163,35 @@
               '';
             }
           );
+        in
+        {
+          inherit cargoArtifacts tarballPkg bare;
+
+          package =
+            pkgs.runCommand "nix-installer-${tarballPkg.passthru.nixVersion}"
+              {
+                nativeBuildInputs = [
+                  pkgs.buildPackages.python3
+                ]
+                ++ pkgs.lib.optionals stdenv.hostPlatform.isDarwin [
+                  pkgs.buildPackages.darwin.sigtool
+                  pkgs.buildPackages.darwin.cctools
+                ];
+                __structuredAttrs = true;
+                unsafeDiscardReferences.out = true;
+                passthru = { inherit bare; };
+              }
+              ''
+                mkdir -p $out/bin
+                python3 ${./scripts/pack} \
+                  --input ${bare}/bin/nix-installer \
+                  --tarball ${tarballPkg}/nix.tar.zst \
+                  --nix-store-path ${tarballPkg.passthru.nixStorePath} \
+                  --cacert-store-path ${tarballPkg.passthru.cacertStorePath} \
+                  --nix-version ${tarballPkg.passthru.nixVersion} \
+                  --output $out/bin/nix-installer
+                install -m755 ${bare}/bin/nix-installer.sh $out/bin/nix-installer.sh
+              '';
 
           test = craneLib.cargoTest (
             sharedAttrs
@@ -237,10 +252,12 @@
             name = "nix-install";
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
-            NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
-            NIX_STORE_PATH = tarballPkg.passthru.nixStorePath;
-            NSS_CACERT_STORE_PATH = tarballPkg.passthru.cacertStorePath;
-            NIX_VERSION = tarballPkg.passthru.nixVersion;
+
+            # For `cargo build && scripts/pack ...` during development.
+            NIX_INSTALLER_DEV_TARBALL = "${tarballPkg}/nix.tar.zst";
+            NIX_INSTALLER_DEV_NIX_PATH = tarballPkg.passthru.nixStorePath;
+            NIX_INSTALLER_DEV_CACERT_PATH = tarballPkg.passthru.cacertStorePath;
+            NIX_INSTALLER_DEV_NIX_VERSION = tarballPkg.passthru.nixVersion;
 
             buildInputs =
               with pkgs;
