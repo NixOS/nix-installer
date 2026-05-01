@@ -34,6 +34,6 @@ jobs:
         # Binaries are realised from cache.nixos.org via nix-store -r,
         # which verifies the NAR signature against cache.nixos.org-1.
         # The attestation proves this workflow released exactly these bytes.
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: release-artifacts/*
