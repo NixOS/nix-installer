@@ -47,7 +47,7 @@ serde = { version = "1.0.203", default-features = false, features = [
   "std",
   "derive",
 ] }
-serde_json = { version = "1.0.149", default-features = false, features = [
+serde_json = { version = "1.0.150", default-features = false, features = [
   "std",
 ] }
 tar = { version = "0.4.45", default-features = false, features = ["xattr"] }
