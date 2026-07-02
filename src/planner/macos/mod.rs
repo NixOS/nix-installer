@@ -23,7 +23,7 @@ use crate::{
         },
     },
     execute_command,
-    os::darwin::DiskUtilInfoOutput,
+    os::darwin::{DiskUtilInfoOutput, diskutil::DiskUtilList},
     planner::{Planner, PlannerError},
     settings::InstallSettingsError,
     settings::{CommonSettings, InitSystem},
@@ -67,6 +67,16 @@ pub struct Macos {
     /// The root disk of the target
     #[cfg_attr(feature = "cli", clap(long, env = "NIX_INSTALLER_ROOT_DISK"))]
     pub root_disk: Option<String>,
+
+    /// On AWS EC2, put the Nix Store on the instance's internal disk to avoid the
+    /// interactive Full Disk Access prompt macOS requires for removable volumes.
+    ///
+    /// The internal disk is erased on Stop (but survives reboots), so the install
+    /// breaks if the instance is Stopped. A launchd watchdog remounts the volume,
+    /// which AWS's macOS deployment periodically unmounts. Auto-detects the root
+    /// disk when --root-disk is unset.
+    #[cfg_attr(feature = "cli", clap(long, default_value = "false"))]
+    pub use_ec2_instance_store: bool,
 }
 
 fn default_root_disk() -> Result<String, PlannerError> {
@@ -82,11 +92,33 @@ fn default_root_disk() -> Result<String, PlannerError> {
     Ok(the_plist.parent_whole_disk)
 }
 
+fn default_internal_root_disk() -> Result<Option<String>, PlannerError> {
+    let buf = execute_command(
+        Command::new("/usr/sbin/diskutil")
+            .args(["list", "-plist", "internal", "virtual"])
+            .stdin(std::process::Stdio::null()),
+    )
+    .map_err(|e| PlannerError::Custom(Box::new(e)))?
+    .stdout;
+    let the_plist: DiskUtilList = plist::from_reader(Cursor::new(buf))?;
+
+    let mut disks = the_plist
+        .all_disks_and_partitions
+        .into_iter()
+        .filter(|disk| !disk.os_internal)
+        .collect::<Vec<_>>();
+
+    disks.sort_by_key(|d| d.size_bytes);
+
+    Ok(disks.pop().map(|d| d.device_identifier))
+}
+
 #[typetag::serde(name = "macos")]
 impl Planner for Macos {
     fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
             settings: CommonSettings::try_default()?,
+            use_ec2_instance_store: false,
             root_disk: Some(default_root_disk()?),
             case_sensitive: false,
             encrypt: None,
@@ -97,6 +129,7 @@ impl Planner for Macos {
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
         let root_disk = match &self.root_disk {
             root_disk @ Some(_) => root_disk.clone(),
+            None if self.use_ec2_instance_store => default_internal_root_disk()?,
             None => Some(default_root_disk()?),
         };
 
@@ -156,6 +189,7 @@ impl Planner for Macos {
                 self.volume_label.clone(),
                 self.case_sensitive,
                 encrypt,
+                self.use_ec2_instance_store,
             )
             .map_err(PlannerError::Action)?
             .boxed(),
@@ -208,6 +242,7 @@ impl Planner for Macos {
             volume_label,
             case_sensitive,
             root_disk,
+            use_ec2_instance_store,
         } = self;
         let mut map = HashMap::default();
 
@@ -215,6 +250,10 @@ impl Planner for Macos {
         map.insert("volume_encrypt".into(), serde_json::to_value(encrypt)?);
         map.insert("volume_label".into(), serde_json::to_value(volume_label)?);
         map.insert("root_disk".into(), serde_json::to_value(root_disk)?);
+        map.insert(
+            "use_ec2_instance_store".into(),
+            serde_json::to_value(use_ec2_instance_store)?,
+        );
         map.insert(
             "case_sensitive".into(),
             serde_json::to_value(case_sensitive)?,
