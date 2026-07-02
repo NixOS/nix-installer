@@ -151,6 +151,20 @@
               pname = "nix-mountd";
               cargoExtraArgs = "-p nix-mountd";
               doCheck = false;
+              env = sharedAttrs.env // {
+                # Like the installer, nix-mountd must run before Nix exists (and
+                # when /nix is unmounted), so it cannot link /nix/store dylibs.
+                NIX_LDFLAGS = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin "-dead_strip_dylibs";
+              };
+              # Enforce the above at build time.
+              nativeBuildInputs = pkgs.lib.optional stdenv.hostPlatform.isDarwin pkgs.darwin.cctools;
+              postInstall = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin ''
+                # otool's first line is the binary's own path; skip it.
+                if otool -L "$out/bin/nix-mountd" | tail -n +2 | grep -F /nix/store; then
+                  echo "error: nix-mountd links a /nix/store dylib (see above)" >&2
+                  exit 1
+                fi
+              '';
             }
           );
 
