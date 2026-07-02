@@ -41,8 +41,18 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
+      # hestia does not work on the x86_64-darwin runner, so keep Cachix
+      # there and use hestia everywhere else.
       - name: Setup hestia cache
+        if: matrix.system != 'x86_64-darwin'
         uses: Mic92/hestia/action@main
+
+      - name: Setup Cachix
+        if: matrix.system == 'x86_64-darwin'
+        uses: cachix/cachix-action@v17
+        with:
+          name: nix-installer
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
       - name: Build the installer
         run: |
