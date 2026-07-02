@@ -1,0 +1,49 @@
+# Garbage collection for the hestia binary cache.
+#
+# GC must run on the default branch: a PR job's cache scope is read-only
+# towards the default branch and dies with the PR, but the default-branch
+# scope grows forever without GC.
+name: Cache GC
+
+# GC handles concurrent pushes, but not a concurrent GC: a second run's
+# repack reads race the first run's post-commit pack deletes. Queue manual
+# runs behind the nightly one instead of overlapping it.
+concurrency:
+  group: hestia-gc
+  cancel-in-progress: false
+
+on:
+  schedule:
+    # Daily, off-peak (UTC).
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Plan only; do not repack, touch, or delete anything.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    permissions:
+      # REST cache deletes need actions:write.
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: NixOS/nix-installer-action@main
+      # Token-capture-only mode: export the cache API tokens without
+      # starting the daemon, then run GC with the released binary.
+      - uses: Mic92/hestia/action@main
+        with:
+          version: ""
+      - name: Run garbage collection
+        run: |
+          nix run github:Mic92/hestia -- gc \
+            ${{ inputs.dry-run && '--dry-run' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
