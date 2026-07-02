@@ -266,16 +266,21 @@ fn generate_mount_plist(
     // stays resident, mounts the volume, and vetoes unmount attempts; KeepAlive
     // relaunches it if it ever exits.
     let (program_arguments, keep_alive) = if keep_mounted {
-        (
-            vec![
-                super::NIX_MOUNTD_DEST.into(),
-                "--volume-label".into(),
-                apfs_volume_label.into(),
-                "--mount-point".into(),
-                mount_point.display().to_string(),
-            ],
-            Some(true),
-        )
+        let mut args = vec![
+            super::NIX_MOUNTD_DEST.into(),
+            "--volume-label".into(),
+            apfs_volume_label.into(),
+            "--mount-point".into(),
+            mount_point.display().to_string(),
+        ];
+        if encrypt {
+            args.extend([
+                "--encrypt".into(),
+                "--keychain-service".into(),
+                KEYCHAIN_NIX_STORE_SERVICE.into(),
+            ]);
+        }
+        (args, Some(true))
     } else if encrypt {
         let mount_command = format!(
             "/usr/bin/security find-generic-password -a {apfs_volume_label_with_quotes} -s {nix_store_with_quotes} -w | /usr/sbin/diskutil apfs unlockVolume {apfs_volume_label_with_quotes} -mountpoint {mount_point:?} -stdinpassphrase"

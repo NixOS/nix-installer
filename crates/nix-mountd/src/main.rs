@@ -18,6 +18,14 @@ struct Cli {
     /// Mount point to keep mounted.
     #[arg(long, default_value = "/nix", env = "NIX_MOUNTD_MOUNT_POINT")]
     mount_point: PathBuf,
+
+    /// Unlock the volume with a keychain password before mounting.
+    #[arg(long, env = "NIX_MOUNTD_ENCRYPT")]
+    encrypt: bool,
+
+    /// Keychain service holding the volume password (with --encrypt).
+    #[arg(long, default_value = "Nix Store", env = "NIX_MOUNTD_KEYCHAIN_SERVICE")]
+    keychain_service: String,
 }
 
 fn main() -> std::io::Result<()> {
@@ -39,7 +47,11 @@ fn main() -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
     {
         if !is_mounted(&cli.mount_point)? {
-            mount(&cli.volume_label, &cli.mount_point)?;
+            if cli.encrypt {
+                unlock(&cli.volume_label, &cli.mount_point, &cli.keychain_service)?;
+            } else {
+                mount(&cli.volume_label, &cli.mount_point)?;
+            }
         }
         disk_arbitration::run(&cli.mount_point)
     }
@@ -64,6 +76,54 @@ fn mount(volume_label: &str, mount_point: &std::path::Path) -> std::io::Result<(
     if !status.success() {
         return Err(std::io::Error::other(format!(
             "diskutil mount failed with {status}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn unlock(
+    volume_label: &str,
+    mount_point: &std::path::Path,
+    keychain_service: &str,
+) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    tracing::info!(volume_label, mount_point = %mount_point.display(), "Unlocking and mounting");
+
+    let password = Command::new("/usr/bin/security")
+        .args([
+            "find-generic-password",
+            "-a",
+            volume_label,
+            "-s",
+            keychain_service,
+            "-w",
+        ])
+        .output()?;
+    if !password.status.success() {
+        return Err(std::io::Error::other(
+            "security find-generic-password failed to read the volume password",
+        ));
+    }
+
+    let mut child = Command::new("/usr/sbin/diskutil")
+        .args(["apfs", "unlockVolume", volume_label, "-mountpoint"])
+        .arg(mount_point)
+        .arg("-stdinpassphrase")
+        .stdin(Stdio::piped())
+        .spawn()?;
+    // Feed the keychain output verbatim, matching `security … | diskutil …`.
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(&password.stdout)?;
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(std::io::Error::other(format!(
+            "diskutil apfs unlockVolume failed with {status}"
         )));
     }
     Ok(())
