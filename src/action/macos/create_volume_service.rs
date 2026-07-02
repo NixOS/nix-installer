@@ -30,6 +30,8 @@ pub struct CreateVolumeService {
     mount_service_label: String,
     mount_point: PathBuf,
     encrypt: bool,
+    // Absent from receipts written before EC2 instance-store support.
+    #[serde(default)]
     keep_mounted: bool,
     needs_bootout: bool,
 }
@@ -260,16 +262,18 @@ fn generate_mount_plist(
     // The official Nix scripts uppercase the UUID, so we do as well for compatibility.
     let uuid_string = uuid.to_uppercase();
 
-    // AWS's macOS deployment periodically unmounts internal disks, so a
-    // keep-mounted service stays resident and remounts when the volume
-    // disappears instead of mounting once at load.
+    // AWS's macOS deployment periodically unmounts internal disks. nix-mountd
+    // stays resident, mounts the volume, and vetoes unmount attempts; KeepAlive
+    // relaunches it if it ever exits.
     let (program_arguments, keep_alive) = if keep_mounted {
-        let loop_command = format!(
-            "while :; do /sbin/mount | /usr/bin/grep -q \" on {} (\" || {{ {mount_command}; }}; /bin/sleep 15; done",
-            mount_point.display(),
-        );
         (
-            vec!["/bin/sh".into(), "-c".into(), loop_command],
+            vec![
+                super::NIX_MOUNTD_DEST.into(),
+                "--volume-label".into(),
+                apfs_volume_label.into(),
+                "--mount-point".into(),
+                mount_point.display().to_string(),
+            ],
             Some(true),
         )
     } else if encrypt {

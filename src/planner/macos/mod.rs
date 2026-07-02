@@ -19,7 +19,8 @@ use crate::{
         base::RemoveDirectory,
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         macos::{
-            ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, SetTmutilExclusions,
+            ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, ProvisionNixMountd,
+            SetTmutilExclusions,
         },
     },
     execute_command,
@@ -75,7 +76,14 @@ pub struct Macos {
     /// breaks if the instance is Stopped. A launchd watchdog remounts the volume,
     /// which AWS's macOS deployment periodically unmounts. Auto-detects the root
     /// disk when --root-disk is unset.
-    #[cfg_attr(feature = "cli", clap(long, default_value = "false"))]
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            default_value = "false",
+            env = "NIX_INSTALLER_USE_EC2_INSTANCE_STORE"
+        )
+    )]
     pub use_ec2_instance_store: bool,
 }
 
@@ -127,9 +135,15 @@ impl Planner for Macos {
     }
 
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        if self.use_ec2_instance_store && !crate::distribution::NIX_MOUNTD_AVAILABLE {
+            return Err(PlannerError::Ec2InstanceStoreUnavailable);
+        }
+
         let root_disk = match &self.root_disk {
             root_disk @ Some(_) => root_disk.clone(),
-            None if self.use_ec2_instance_store => default_internal_root_disk()?,
+            None if self.use_ec2_instance_store => {
+                Some(default_internal_root_disk()?.ok_or(PlannerError::NoInternalDisk)?)
+            },
             None => Some(default_root_disk()?),
         };
 
@@ -183,7 +197,19 @@ impl Planner for Macos {
             },
         };
 
-        let mut plan = vec![
+        let mut plan = vec![];
+
+        // nix-mountd must exist before the volume service that runs it is
+        // bootstrapped by CreateNixVolume.
+        if self.use_ec2_instance_store {
+            plan.push(
+                ProvisionNixMountd::plan()
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+
+        plan.extend([
             CreateNixVolume::plan(
                 root_disk.unwrap(), /* We just ensured it was populated */
                 self.volume_label.clone(),
@@ -213,7 +239,7 @@ impl Planner for Macos {
             ConfigureRemoteBuilding::plan()
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        ];
+        ]);
 
         if self.settings.modify_profile {
             plan.push(

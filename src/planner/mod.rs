@@ -435,6 +435,12 @@ pub enum PlannerError {
         "Detected that this process is running under Rosetta, using Nix in Rosetta is not supported (Please open an issue with your use case)"
     )]
     RosettaDetected,
+    #[error(
+        "This nix-installer build does not embed the nix-mountd binary required by --use-ec2-instance-store"
+    )]
+    Ec2InstanceStoreUnavailable,
+    #[error("Could not find an internal disk to create the Nix Store volume on")]
+    NoInternalDisk,
     /// A Linux SELinux related error
     #[error(
         "Unable to install on an SELinux system without common SELinux tooling, the binaries `restorecon`, and `semodule` are required"
@@ -469,6 +475,8 @@ impl HasExpectedErrors for PlannerError {
             PlannerError::Sysctl(_) => None,
             this @ PlannerError::IncompatibleOperatingSystem { .. } => Some(Box::new(this)),
             this @ PlannerError::RosettaDetected => Some(Box::new(this)),
+            this @ PlannerError::Ec2InstanceStoreUnavailable => Some(Box::new(this)),
+            this @ PlannerError::NoInternalDisk => Some(Box::new(this)),
 
             PlannerError::Utf8(_) => None,
             PlannerError::SelinuxRequirements => Some(Box::new(self)),
