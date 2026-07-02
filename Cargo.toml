@@ -37,7 +37,7 @@ eyre = { version = "0.6.8", default-features = false, features = [
   "track-caller",
 ], optional = true }
 glob = { version = "0.3.0", default-features = false }
-nix = { version = "0.31.2", default-features = false, features = [
+nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "fs",
   "process",
