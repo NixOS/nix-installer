@@ -48,6 +48,7 @@ impl CreateNixVolume {
         name: String,
         case_sensitive: bool,
         encrypt: bool,
+        keep_mounted: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let disk = disk.as_ref();
         let create_or_append_synthetic_conf = CreateOrInsertIntoFile::plan(
@@ -86,6 +87,7 @@ impl CreateNixVolume {
             name.clone(),
             "/nix",
             encrypt,
+            keep_mounted,
         )
         .map_err(Self::error)?;
 

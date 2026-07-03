@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "crates/nix-mountd"]
+
 [package]
 name = "nix-installer"
 description = "Experimental Nix Installer"

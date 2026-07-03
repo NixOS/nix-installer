@@ -30,6 +30,9 @@ pub struct CreateVolumeService {
     mount_service_label: String,
     mount_point: PathBuf,
     encrypt: bool,
+    // Absent from receipts written before EC2 instance-store support.
+    #[serde(default)]
+    keep_mounted: bool,
     needs_bootout: bool,
 }
 
@@ -41,6 +44,7 @@ impl CreateVolumeService {
         apfs_volume_label: String,
         mount_point: impl AsRef<Path>,
         encrypt: bool,
+        keep_mounted: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
         let path = path.as_ref().to_path_buf();
         let mount_point = mount_point.as_ref().to_path_buf();
@@ -48,9 +52,10 @@ impl CreateVolumeService {
         let mut this = Self {
             path,
             apfs_volume_label,
-            mount_service_label,
             mount_point,
+            mount_service_label,
             encrypt,
+            keep_mounted,
             needs_bootout: false,
         };
 
@@ -89,6 +94,7 @@ impl CreateVolumeService {
                         &disk_info.volume_uuid,
                         &this.mount_point,
                         encrypt,
+                        this.keep_mounted,
                     )
                     .map_err(Self::error)?;
                     if discovered_plist != expected_plist {
@@ -184,6 +190,7 @@ impl Action for CreateVolumeService {
             apfs_volume_label,
             mount_point,
             encrypt,
+            keep_mounted,
             needs_bootout,
         } = self;
 
@@ -206,6 +213,7 @@ impl Action for CreateVolumeService {
             &disk_info.volume_uuid,
             mount_point,
             *encrypt,
+            *keep_mounted,
         )
         .map_err(Self::error)?;
 
@@ -247,30 +255,57 @@ fn generate_mount_plist(
     uuid: &str,
     mount_point: &Path,
     encrypt: bool,
+    keep_mounted: bool,
 ) -> Result<LaunchctlMountPlist, ActionErrorKind> {
     let apfs_volume_label_with_quotes = format!("\"{apfs_volume_label}\"");
     let nix_store_with_quotes = format!("\"{KEYCHAIN_NIX_STORE_SERVICE}\"");
     // The official Nix scripts uppercase the UUID, so we do as well for compatibility.
     let uuid_string = uuid.to_uppercase();
-    let mount_command = if encrypt {
-        let encrypted_command = format!(
+
+    // AWS's macOS deployment periodically unmounts internal disks. nix-mountd
+    // stays resident, mounts the volume, and vetoes unmount attempts; KeepAlive
+    // relaunches it if it ever exits.
+    let (program_arguments, keep_alive) = if keep_mounted {
+        let mut args = vec![
+            super::NIX_MOUNTD_DEST.into(),
+            "--volume-label".into(),
+            apfs_volume_label.into(),
+            "--mount-point".into(),
+            mount_point.display().to_string(),
+        ];
+        if encrypt {
+            args.extend([
+                "--encrypt".into(),
+                "--keychain-service".into(),
+                KEYCHAIN_NIX_STORE_SERVICE.into(),
+            ]);
+        }
+        (args, Some(true))
+    } else if encrypt {
+        let mount_command = format!(
             "/usr/bin/security find-generic-password -a {apfs_volume_label_with_quotes} -s {nix_store_with_quotes} -w | /usr/sbin/diskutil apfs unlockVolume {apfs_volume_label_with_quotes} -mountpoint {mount_point:?} -stdinpassphrase"
         );
-        vec!["/bin/sh".into(), "-c".into(), encrypted_command]
+        (vec!["/bin/sh".into(), "-c".into(), mount_command], None)
     } else {
-        vec![
-            "/usr/sbin/diskutil".into(),
-            "mount".into(),
-            "-mountPoint".into(),
-            mount_point.display().to_string(),
-            uuid_string,
-        ]
+        // Preserve the historical non-keep-mounted argv so re-runs on existing
+        // installs don't see a differing plist.
+        (
+            vec![
+                "/usr/sbin/diskutil".into(),
+                "mount".into(),
+                "-mountPoint".into(),
+                mount_point.display().to_string(),
+                uuid_string,
+            ],
+            None,
+        )
     };
 
     let mount_plist = LaunchctlMountPlist {
         run_at_load: true,
         label: mount_service_label.into(),
-        program_arguments: mount_command,
+        program_arguments,
+        keep_alive,
     };
 
     Ok(mount_plist)
@@ -282,6 +317,8 @@ pub struct LaunchctlMountPlist {
     run_at_load: bool,
     label: String,
     program_arguments: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_alive: Option<bool>,
 }
 
 #[non_exhaustive]

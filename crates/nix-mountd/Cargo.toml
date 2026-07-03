@@ -1,0 +1,20 @@
+[package]
+name = "nix-mountd"
+description = "Keep the Nix Store APFS volume mounted on macOS (needed on AWS EC2)"
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-2.1"
+repository = "https://github.com/NixOS/nix-installer"
+
+[[bin]]
+name = "nix-mountd"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+libc = "0.2"

@@ -12,6 +12,10 @@ jobs:
   build:
     name: Build (${{ matrix.system }})
 
+    permissions:
+      contents: read
+      actions: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -37,8 +41,14 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
+      # hestia does not work on the x86_64-darwin runner, so keep Cachix
+      # there and use hestia everywhere else.
+      - name: Setup hestia cache
+        if: matrix.system != 'x86_64-darwin'
+        uses: Mic92/hestia/action@main
 
       - name: Setup Cachix
+        if: matrix.system == 'x86_64-darwin'
         uses: cachix/cachix-action@v17
         with:
           name: nix-installer
@@ -70,6 +80,10 @@ jobs:
   lints:
     name: Lints
 
+    permissions:
+      contents: read
+      actions: write
+
     runs-on: ubuntu-latest
 
     steps:
@@ -82,11 +96,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v17
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run checks (formatting, clippy)
         run: nix build .#checks.x86_64-linux.formatting .#checks.x86_64-linux.clippy -L
@@ -252,6 +263,9 @@ jobs:
   vm-tests:
     name: VM Tests - ${{ matrix.distro }}
     needs: [build, lints]
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -275,11 +289,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v17
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run VM tests for ${{ matrix.distro }}
         run: |
@@ -306,6 +317,9 @@ jobs:
   container-tests:
     name: Container Tests - ${{ matrix.distro }}
     needs: [build, lints]
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -323,11 +337,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v17
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run container tests for ${{ matrix.distro }}
         run: nix build .#checks.x86_64-linux.container-test-${{ matrix.distro }}-all -L
