@@ -9,7 +9,6 @@ use crate::{
             provision_selinux::SELINUX_POLICY_PP_CONTENT,
         },
     },
-    error::HasExpectedErrors,
     planner::{Planner, PlannerError},
     settings::{CommonSettings, InitSystem, InstallSettingsError},
 };
@@ -122,21 +121,21 @@ impl Planner for Ostree {
         plan.push(create_bind_mount_unit.boxed());
 
         let ensure_symlinked_units_resolve_buf = "\
-        [Unit]\n\
-        Description=Ensure Nix related units which are symlinked resolve\n\
-        After=nix.mount\n\
-        Requires=nix.mount\n\
-        DefaultDependencies=no\n\
-        \n\
-        [Service]\n\
-        Type=oneshot\n\
-        RemainAfterExit=yes\n\
-        ExecStart=/usr/bin/systemctl daemon-reload\n\
-        ExecStart=/usr/bin/systemctl restart --no-block nix-daemon.socket\n\
-        \n\
-        [Install]\n\
-        WantedBy=sysinit.target\n\
-    "
+            [Unit]\n\
+            Description=Ensure Nix related units which are symlinked resolve\n\
+            After=nix.mount\n\
+            Requires=nix.mount\n\
+            DefaultDependencies=no\n\
+            \n\
+            [Service]\n\
+            Type=oneshot\n\
+            RemainAfterExit=yes\n\
+            ExecStart=/usr/bin/systemctl daemon-reload\n\
+            ExecStart=/usr/bin/systemctl restart --no-block nix-daemon.socket\n\
+            \n\
+            [Install]\n\
+            WantedBy=sysinit.target\n\
+        "
         .to_string();
         let ensure_symlinked_units_resolve_unit = CreateFile::plan(
             "/etc/systemd/system/ensure-symlinked-units-resolve.service",
@@ -291,45 +290,5 @@ impl Planner for Ostree {
 impl From<Ostree> for BuiltinPlanner {
     fn from(val: Ostree) -> Self {
         BuiltinPlanner::Ostree(val)
-    }
-}
-
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum OstreeError {
-    #[error(
-        "\
-        systemd was not active.\n\
-        \n\
-        If it will be started later consider, passing `--no-start-daemon`.\n\
-        \n\
-        To use a `root`-only Nix install, consider passing `--init none`."
-    )]
-    SystemdNotActive,
-    #[error(
-        "\
-        systemd was not active.\n\
-        \n\
-        On WSL2, systemd is not enabled by default. Consider enabling it by adding it to your `/etc/wsl.conf` with `echo -e '[boot]\\nsystemd=true'` then restarting WSL2 with `wsl.exe --shutdown` and re-entering the WSL shell. For more information, see https://devblogs.microsoft.com/commandline/systemd-support-is-now-available-in-wsl/.\n\
-        \n\
-        If it will be started later consider, passing `--no-start-daemon`.\n\
-        \n\
-        To use a `root`-only Nix install, consider passing `--init none`."
-    )]
-    Wsl2SystemdNotActive,
-}
-
-impl HasExpectedErrors for OstreeError {
-    fn expected<'a>(&'a self) -> Option<Box<dyn std::error::Error + 'a>> {
-        match self {
-            OstreeError::SystemdNotActive => Some(Box::new(self)),
-            OstreeError::Wsl2SystemdNotActive => Some(Box::new(self)),
-        }
-    }
-}
-
-impl From<OstreeError> for PlannerError {
-    fn from(v: OstreeError) -> PlannerError {
-        PlannerError::Custom(Box::new(v))
     }
 }

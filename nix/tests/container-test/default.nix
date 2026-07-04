@@ -24,6 +24,35 @@ let
       tester = ./default/Dockerfile;
       system = "x86_64-linux";
     };
+
+    # Fedora 42 WSL rootfs – used for the bootc planner container test
+    # (no systemd) reproducing
+    # https://github.com/NixOS/nix-installer/issues/155
+    # Re-compressed from .tar.xz to .tar.zst because podman import is
+    # extremely slow at xz decompression inside a VM.
+    "fedora-v42-bootc" =
+      let
+        xzTarball = builtins.fetchurl {
+          url = "https://dl.fedoraproject.org/pub/fedora/linux/releases/42/Container/x86_64/images/Fedora-WSL-Base-42-1.1.x86_64.tar.xz";
+          sha256 = "138vibdf0qcln3r0f116qvmq5vx8im9cy0xv2ml7r8ccsw2kvywr";
+        };
+        pkgs = forSystem "x86_64-linux" ({ pkgs, ... }: pkgs);
+      in
+      {
+        tarball =
+          pkgs.runCommand "fedora-42-rootfs.tar.zst"
+            {
+              nativeBuildInputs = with pkgs; [
+                xz
+                zstd
+              ];
+            }
+            ''
+              xz -dc ${xzTarball} | zstd -o $out
+            '';
+        tester = ./bootc/Dockerfile;
+        system = "x86_64-linux";
+      };
   };
 
   makeTest =

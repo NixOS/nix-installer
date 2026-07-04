@@ -327,6 +327,7 @@ jobs:
         distro:
           - ubuntu-v22_04
           - ubuntu-v24_04
+          - fedora-v42-bootc
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
