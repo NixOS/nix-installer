@@ -83,7 +83,7 @@ impl NixProfile<'_> {
                 return Err(super::Error::PathConflict(pkg.to_path_buf(), intersection));
             }
 
-            all_new_paths.extend(candidates.into_iter());
+            all_new_paths.extend(candidates);
         }
 
         Ok(all_new_paths)

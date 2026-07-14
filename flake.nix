@@ -6,7 +6,7 @@
 
     crane.url = "github:ipetkov/crane/v0.20.0";
 
-    nix.url = "github:NixOS/nix/2.34.7";
+    nix.url = "github:NixOS/nix/2.35.1";
 
     flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
 
@@ -27,7 +27,6 @@
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
 

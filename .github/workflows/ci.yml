@@ -24,8 +24,6 @@ jobs:
             system: x86_64-linux
           - os: ubuntu-24.04-arm
             system: aarch64-linux
-          - os: macos-15-intel
-            system: x86_64-darwin
           - os: macos-15
             system: aarch64-darwin
 
@@ -41,18 +39,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      # hestia does not work on the x86_64-darwin runner, so keep Cachix
-      # there and use hestia everywhere else.
       - name: Setup hestia cache
-        if: matrix.system != 'x86_64-darwin'
         uses: Mic92/hestia/action@main
-
-      - name: Setup Cachix
-        if: matrix.system == 'x86_64-darwin'
-        uses: cachix/cachix-action@v17
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
       - name: Build the installer
         run: |
@@ -118,8 +106,6 @@ jobs:
             init: "no"
           - os: ubuntu-24.04-arm
             system: aarch64-linux
-          - os: macos-15-intel
-            system: x86_64-darwin
           - os: macos-15
             system: aarch64-darwin
 
