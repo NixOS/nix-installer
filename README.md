@@ -29,7 +29,7 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable
 | Platform                                                             |    Multi user?    | `root` only |     Maturity      |
 | -------------------------------------------------------------------- | :---------------: | :---------: | :---------------: |
 | Linux (`x86_64` and `aarch64`)                                       | ✓ (via [systemd]) |      ✓      |      Stable       |
-| MacOS (`x86_64` and `aarch64`)                                       |         ✓         |             | Stable (see note) |
+| MacOS (`aarch64`)                                                    |         ✓         |             | Stable (see note) |
 | [Valve Steam Deck][steam-deck] (SteamOS)                             |         ✓         |             |      Stable       |
 | [Windows Subsystem for Linux][wsl] 2 (WSL2) (`x86_64` and `aarch64`) | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Podman] Linux containers                                            | ✓ (via [systemd]) |      ✓      |      Stable       |
