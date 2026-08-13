@@ -4,7 +4,7 @@ members = [".", "crates/nix-mountd"]
 [package]
 name = "nix-installer"
 description = "Experimental Nix Installer"
-version = "2.35.1"
+version = "2.35.2"
 edition = "2024"
 license = "LGPL-2.1"
 repository = "https://github.com/NixOS/nix-installer"
