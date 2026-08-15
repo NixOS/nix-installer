@@ -196,8 +196,14 @@ impl InstallPlan {
         if self.daemon_expected() {
             Self::wait_for_daemon_socket();
         }
-        if let Err(err) = crate::self_test::self_test().map_err(NixInstallerError::SelfTest) {
-            tracing::warn!("{err:?}")
+        if self.shell_profile_modified() {
+            if let Err(err) = crate::self_test::self_test().map_err(NixInstallerError::SelfTest) {
+                tracing::warn!("{err:?}")
+            }
+        } else {
+            tracing::debug!(
+                "skipping self-test: shell profile not modified, `nix` won't be on PATH"
+            );
         }
 
         Ok(())
@@ -345,6 +351,21 @@ impl InstallPlan {
     /// This checks the planner settings for `start_daemon` (Linux) and
     /// `init` (all platforms).  macOS always starts the daemon so we default
     /// to `true` when the setting is absent.
+    /// The self-test execs `sh -lc "nix build ..."`, which only finds `nix`
+    /// if we wrote the shell profile hooks. `--no-modify-profile` (and
+    /// therefore `--rootless`) leave PATH alone, so the test would just
+    /// report "nix: not found" and alarm the user about a perfectly
+    /// functional install.
+    fn shell_profile_modified(&self) -> bool {
+        match self.planner.settings() {
+            Ok(s) => s
+                .get("modify_profile")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            Err(_) => true,
+        }
+    }
+
     fn daemon_expected(&self) -> bool {
         let settings = match self.planner.settings() {
             Ok(s) => s,
