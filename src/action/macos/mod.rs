@@ -15,6 +15,7 @@ pub(crate) mod kickstart_launchctl_service;
 pub(crate) mod provision_nix_mountd;
 pub(crate) mod set_tmutil_exclusion;
 pub(crate) mod set_tmutil_exclusions;
+pub(crate) mod suppress_volume_indexing;
 pub(crate) mod unmount_apfs_volume;
 
 use std::fs;
@@ -36,6 +37,7 @@ pub use provision_nix_mountd::{NIX_MOUNTD_DEST, ProvisionNixMountd};
 use serde::Deserialize;
 pub use set_tmutil_exclusion::SetTmutilExclusion;
 pub use set_tmutil_exclusions::SetTmutilExclusions;
+pub use suppress_volume_indexing::SuppressVolumeIndexing;
 pub use unmount_apfs_volume::UnmountApfsVolume;
 
 use crate::execute_command;
