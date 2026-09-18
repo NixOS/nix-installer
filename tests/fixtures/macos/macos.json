@@ -85,6 +85,13 @@
             "path": "/nix"
           },
           "state": "Completed"
+        },
+        "suppress_indexing": {
+          "action": {
+            "action_name": "suppress_volume_indexing",
+            "mount_point": "/nix"
+          },
+          "state": "Completed"
         }
       },
       "state": "Completed"
