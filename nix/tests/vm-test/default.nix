@@ -463,6 +463,7 @@ let
           qemu_kvm
           openssh
           cdrkit
+          colorized-logs
         ]
         ++ (if image ? extraBuildInputs then image.extraBuildInputs pkgs else [ ]);
         image = image.image;
@@ -513,7 +514,7 @@ let
           -drive file=./seed.img,media=cdrom \
           -netdev user,id=net0,restrict=yes,hostfwd=tcp::$ssh_port-:22 -device virtio-net-pci,netdev=net0 \
           -run-with exit-with-parent=on \
-          $extra_qemu_opts &
+          $extra_qemu_opts > >(ansi2txt) &
 
         qemu_pid=$!
 
