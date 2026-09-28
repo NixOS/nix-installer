@@ -259,12 +259,11 @@ jobs:
         distro:
           - ubuntu-v22_04
           - ubuntu-v24_04
-          - fedora-v36
-          - fedora-v37
+          - fedora-v43
           - rocky-v8
           - rocky-v9
           - opensuse-leap-v15_6
-          - archlinux-v20260115
+          - archlinux-v20260915
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

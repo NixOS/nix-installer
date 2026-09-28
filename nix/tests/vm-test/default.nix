@@ -387,109 +387,64 @@ let
     # End of standard support https://wiki.ubuntu.com/Releases
     "ubuntu-v22_04" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/ubuntu2204/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-HNll0Qikw/xGIcogni5lz01vUv+R3o8xowP2EtqjuUQ=";
+        url = "https://cloud-images.ubuntu.com/releases/jammy/release-20260913/ubuntu-22.04-server-cloudimg-amd64-disk-kvm.img";
+        hash = "sha256-vicNXW2BZzkUpj6DjdgPo1xXGpXEQBoOU43RWiBxVyE=";
       };
-      rootDisk = "box.img";
       system = "x86_64-linux";
     };
 
     "ubuntu-v24_04" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://vagrantcloud.com/bento/boxes/ubuntu-24.04/versions/202502.21.0/providers/libvirt/amd64/vagrant.box";
-        hash = "sha256-nXerG+g7DG2EszsczaOeVMkbpPOTXGKa+KdYHvF9jq8=";
+        url = "https://cloud-images.ubuntu.com/releases/noble/release-20260911/ubuntu-24.04-server-cloudimg-amd64.img";
+        hash = "sha256-YSssDMG8QTpsuMOP1hF5TK8PK0NsUAE9izeU2xKtc1Q=";
       };
-      rootDisk = "box_0.img";
       system = "x86_64-linux";
     };
 
-    "fedora-v36" = {
+    # End of life documentation https://docs.fedoraproject.org/en-US/releases/eol/
+    "fedora-v43" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/fedora36/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-rxPgnDnFkTDwvdqn2CV3ZUo3re9AdPtSZ9SvOHNvaks=";
+        url = "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2";
+        hash = "sha256-hGV0yKl80tjcHyMQYtcxB8yFy7vaVjNeJkpG46bIqy8=";
       };
-      rootDisk = "box.img";
       system = "x86_64-linux";
     };
 
-    "fedora-v37" = {
-      image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/fedora37/versions/4.2.14/providers/libvirt.box";
-        hash = "sha256-rxPgnDnFkTDwvdqn2CV3ZUo3re9AdPtSZ9SvOHNvaks=";
-      };
-      rootDisk = "box.img";
-      system = "x86_64-linux";
-    };
+    # FIXME: Installs on Fedora 44 seem to be broken.
 
     "rocky-v8" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/rocky8/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-IAjRT9h1T3Fc/1+aIbKlPLn3uP29cqM+JRVoFztHWV4=";
+        url = "https://dl.rockylinux.org/pub/rocky/8/images/x86_64/Rocky-8-GenericCloud-Base-8.10-20240528.0.x86_64.qcow2";
+        hash = "sha256-5WBmxYYGGR6WGE3pqRg6OvM8Wby9h0DYsQygVKeonBQ=";
       };
-      rootDisk = "box.img";
       system = "x86_64-linux";
     };
 
     "rocky-v9" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://app.vagrantup.com/generic/boxes/rocky9/versions/4.1.12/providers/libvirt.box";
-        hash = "sha256-1M7JDMYYYwAwIBvDOsixH/umefPvZ0bCaWzSG1DwX5Y=";
+        url = "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2";
+        hash = "sha256-ksIGzG95DGFYMkfu/oeJD4goQgZiwXys8kfOx4q07sg=";
       };
-      rootDisk = "box.img";
       system = "x86_64-linux";
       extraQemuOpts = "-cpu Westmere-v2";
     };
 
     "opensuse-leap-v15_6" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://download.opensuse.org/distribution/leap/15.6/appliances/Leap-15.6.x86_64-15.6-libvirt-Build19.53.vagrant.libvirt.box";
-        hash = "sha256-dBem1TOURmFkX80y+aKlJ3OW7hblA5tNYdrTWheuZa4=";
+        url = "https://download.opensuse.org/distribution/leap/15.6/appliances/openSUSE-Leap-15.6-Minimal-VM.x86_64-15.6.0-Cloud-Build19.146.qcow2";
+        hash = "sha256-ClcgQW1CP5iqyqeTpX1W7ARePdJc2IcTlSZgrQDaU70=";
       };
-      rootDisk = "box.img";
       system = "x86_64-linux";
     };
 
     # Official Arch Linux cloud image from https://geo.mirror.pkgbuild.com/images/
     # Built by https://gitlab.archlinux.org/archlinux/arch-boxes
-    # Uses virt-customize to inject vagrant user + SSH key since the cloud
-    # image relies on cloud-init (which we disable) and OpenSSH 10.x
-    # disables password auth by default.
-    "archlinux-v20260115" = {
+    # FIXME: These links rot. Archive this somewhere.
+    "archlinux-v20260915" = {
       image = import <nix/fetchurl.nix> {
-        url = "https://geo.mirror.pkgbuild.com/images/v20260115.482142/Arch-Linux-x86_64-cloudimg-20260115.482142.qcow2";
-        hash = "sha256-kYz1wyQZmkNgmPJv+BnMqCDLrejCChJ29BE0yzM77uM=";
+        url = "https://geo.mirror.pkgbuild.com/images/v20260915.594445/Arch-Linux-x86_64-cloudimg.qcow2";
+        hash = "sha256-18x8hqIbMtZnjAAUZHFPcfTvfg17u/ymXpkSOsWvwls=";
       };
-      extraBuildInputs = pkgs: [ pkgs.guestfs-tools ];
-      setupScript = ''
-        echo "Preparing Arch Linux cloud image..."
-        cp "$image" ./disk.qcow2
-        chmod 644 ./disk.qcow2
-        qemu-img resize ./disk.qcow2 20G
-
-        vagrant_pubkey="$(ssh-keygen -y -f ./vagrant_insecure_key)"
-        virt-customize -a ./disk.qcow2 --no-network \
-          --run-command 'useradd -m -G wheel -s /bin/bash vagrant' \
-          --run-command 'mkdir -p /home/vagrant/.ssh' \
-          --run-command "echo '$vagrant_pubkey' > /home/vagrant/.ssh/authorized_keys" \
-          --run-command 'chmod 700 /home/vagrant/.ssh' \
-          --run-command 'chmod 600 /home/vagrant/.ssh/authorized_keys' \
-          --run-command 'chown -R vagrant:vagrant /home/vagrant/.ssh' \
-          --run-command 'echo "vagrant ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/vagrant' \
-          --run-command 'systemctl disable cloud-init-main.service cloud-init-local.service cloud-init-network.service cloud-config.service cloud-final.service' \
-          --run-command 'systemctl disable pacman-init.service systemd-time-wait-sync.service || true' \
-          --run-command 'systemctl enable sshd.service || true' \
-          --run-command 'systemctl enable systemd-networkd.service || true' \
-          --run-command 'systemctl enable systemd-resolved.service || true' \
-          --run-command 'touch /etc/machine-id' \
-          --run-command 'ssh-keygen -A' \
-          --run-command 'sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/" /etc/default/grub && grub-mkconfig -o /boot/grub/grub.cfg' \
-          --write '/etc/systemd/network/20-ethernet.network:[Match]
-        Name=eth0
-
-        [Network]
-        DHCP=yes
-        '
-      '';
       system = "x86_64-linux";
     };
 
@@ -507,6 +462,8 @@ let
         buildInputs = [
           qemu_kvm
           openssh
+          cdrkit
+          colorized-logs
         ]
         ++ (if image ? extraBuildInputs then image.extraBuildInputs pkgs else [ ]);
         image = image.image;
@@ -521,45 +478,48 @@ let
       }
       ''
         shopt -s nullglob
+        set -eu
 
-        if ! [ -e ./vagrant_insecure_key ]; then
-          cp ${./vagrant_insecure_key} vagrant_insecure_key
-        fi
-        chmod 0400 ./vagrant_insecure_key
+        image_type=$(qemu-img info $image | sed 's/file format: \(.*\)/\1/; t; d')
+        qemu-img create -b $image -F "$image_type" -f qcow2 ./disk.qcow2
+        qemu-img resize ./disk.qcow2 +2G
+        ssh-keygen -t ed25519 -f ./id_test
 
-        ${
-          if (image.setupScript or "") != "" then
-            image.setupScript
-          else
-            ''
-              echo "Unpacking Vagrant box $image..."
-              tar xvf $image
+        # Configure our test user via cloud-init to get passwordless sudo and
+        # the freshly generated ssh key.
+        touch network-config
+        touch meta-data
+        cat << EOF > user-data
+        #cloud-config
+        users:
+        - name: user
+          shell: ${image.shell or "/bin/bash"}
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          lock_passwd: true
+          ssh_authorized_keys:
+          - $(cat ./id_test.pub)
+        bootcmd:
+        # Workaround for Arch, which seems to block sshd on this?
+        - systemctl stop systemd-time-wait-sync.service || true
+        EOF
 
-              image_type=$(qemu-img info ${image.rootDisk or "box.img"} | sed 's/file format: \(.*\)/\1/; t; d')
-
-              qemu-img create -b ./${image.rootDisk or "box.img"} -F "$image_type" -f qcow2 ./disk.qcow2
-            ''
-        }
-
+        genisoimage -output seed.img -volid cidata -rational-rock -joliet user-data meta-data network-config
         extra_qemu_opts="${image.extraQemuOpts or ""}"
-
-        # Add the config disk, required by the Ubuntu images.
-        config_drive=$(echo *configdrive.vmdk || true)
-        if [[ -n $config_drive ]]; then
-          extra_qemu_opts+=" -drive id=disk2,file=$config_drive,if=virtio"
-        fi
+        ssh_port=20022
 
         echo "Starting qemu..."
         qemu-kvm -m 4096 -nographic \
           -device virtio-rng-pci \
           -drive id=disk1,file=./disk.qcow2,if=virtio \
-          -netdev user,id=net0,restrict=yes,hostfwd=tcp::20022-:22 -device virtio-net-pci,netdev=net0 \
-          $extra_qemu_opts &
-        qemu_pid=$!
-        trap "kill $qemu_pid" EXIT
+          -drive file=./seed.img,media=cdrom \
+          -netdev user,id=net0,restrict=yes,hostfwd=tcp::$ssh_port-:22 -device virtio-net-pci,netdev=net0 \
+          -run-with exit-with-parent=on \
+          $extra_qemu_opts > >(ansi2txt) &
 
-        ssh_opts="-o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedKeyTypes=+ssh-rsa -i ./vagrant_insecure_key"
-        ssh="ssh -p 20022 -q $ssh_opts vagrant@localhost"
+        qemu_pid=$!
+
+        ssh_opts="-o StrictHostKeyChecking=no -i ./id_test"
+        ssh="ssh -p $ssh_port -q $ssh_opts user@localhost"
 
         echo "Waiting for SSH..."
         for ((i = 0; i < 120; i++)); do
@@ -581,7 +541,7 @@ let
         fi
 
         echo "Copying installer..."
-        scp -P 20022 $ssh_opts $installer/bin/nix-installer vagrant@localhost:nix-installer
+        scp -P $ssh_port $ssh_opts $installer/bin/nix-installer user@localhost:nix-installer
 
         echo "Running preinstall..."
         $ssh "set -eux; $preinstallScript"
