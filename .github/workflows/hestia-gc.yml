@@ -34,7 +34,7 @@ jobs:
       actions: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: NixOS/nix-installer-action@main
       # Token-capture-only mode: export the cache API tokens without
       # starting the daemon, then run GC with the released binary.
