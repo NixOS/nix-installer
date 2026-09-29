@@ -75,7 +75,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 ], optional = true }
 url = { version = "2.5.8", default-features = false, features = ["serde"] }
 zstd = { version = "0.13", default-features = false }
-plist = { version = "=1.9.0", default-features = false, features = ["serde"] }
+plist = { version = "=1.10.0", default-features = false, features = ["serde"] }
 dirs = { version = "6.0.0", default-features = false }
 typetag = { version = "0.2.22", default-features = false }
 dyn-clone = { version = "1.0.9", default-features = false }
