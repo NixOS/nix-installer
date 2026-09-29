@@ -201,7 +201,14 @@ pub struct CommonSettings {
             env = "NIX_INSTALLER_ENABLE_FLAKES"
         )
     )]
+    #[serde(default = "legacy_enable_flakes_default")]
     pub enable_flakes: bool,
+}
+
+// Receipts written before 2.35.2 always configured flakes. Keep that behavior
+// when their planner settings are deserialized for repair or uninstall.
+const fn legacy_enable_flakes_default() -> bool {
+    true
 }
 
 pub(crate) fn default_nix_build_user_id_base() -> u32 {
@@ -502,7 +509,23 @@ impl clap::builder::TypedValueParser for UrlOrPathOrString {
 
 #[cfg(test)]
 mod tests {
-    use super::{FromStr, PathBuf, Url, UrlOrPathOrString};
+    use super::{CommonSettings, FromStr, PathBuf, Url, UrlOrPathOrString};
+
+    #[test]
+    fn legacy_common_settings_keep_flakes_enabled() -> Result<(), Box<dyn std::error::Error>> {
+        let settings = CommonSettings::try_default()?;
+        assert!(!settings.enable_flakes);
+
+        let mut legacy_receipt_settings = serde_json::to_value(settings)?;
+        legacy_receipt_settings
+            .as_object_mut()
+            .expect("CommonSettings must serialize as an object")
+            .remove("enable_flakes");
+
+        let parsed: CommonSettings = serde_json::from_value(legacy_receipt_settings)?;
+        assert!(parsed.enable_flakes);
+        Ok(())
+    }
 
     #[test]
     fn url_or_path_or_string_parses() -> Result<(), Box<dyn std::error::Error>> {
