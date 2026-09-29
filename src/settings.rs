@@ -324,7 +324,7 @@ fn linux_detect_systemd_started() -> bool {
     let mut started = false;
     if std::path::Path::new("/run/systemd/system").exists() {
         started = std::process::Command::new("systemctl")
-            .arg("status")
+            .args(["status", "--no-pager"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
