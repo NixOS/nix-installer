@@ -259,12 +259,11 @@ jobs:
         distro:
           - ubuntu-v22_04
           - ubuntu-v24_04
-          - fedora-v36
-          - fedora-v37
+          - fedora-v43
           - rocky-v8
           - rocky-v9
           - opensuse-leap-v15_6
-          - archlinux-v20260115
+          - archlinux-v20260915
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -280,25 +279,7 @@ jobs:
 
       - name: Run VM tests for ${{ matrix.distro }}
         run: |
-          # Build VM tests one at a time to avoid OOM.
-          # Each test spawns a 4 GB QEMU VM; running them in parallel
-          # exceeds the runner's RAM limit.
-          tests=$(nix eval --json '.#checks.x86_64-linux' \
-            --apply 'x: builtins.filter (n:
-              let prefix = "vm-test-${{ matrix.distro }}-"; in
-              builtins.substring 0 (builtins.stringLength prefix) n == prefix
-              && ! builtins.elem n [
-                "vm-test-${{ matrix.distro }}-all"
-                "vm-test-${{ matrix.distro }}-install"
-                "vm-test-${{ matrix.distro }}-cure-self"
-                "vm-test-${{ matrix.distro }}-uninstall"
-              ]
-            ) (builtins.attrNames x)')
-          for test in $(echo "$tests" | jq -r '.[]'); do
-            echo "::group::Building $test"
-            nix build ".#checks.x86_64-linux.$test" -L
-            echo "::endgroup::"
-          done
+          nix build ".#checks.x86_64-linux.vm-test-${{ matrix.distro }}-all" -L
 
   container-tests:
     name: Container Tests - ${{ matrix.distro }}
