@@ -410,7 +410,13 @@ let
       system = "x86_64-linux";
     };
 
-    # FIXME: Installs on Fedora 44 seem to be broken.
+    "fedora-v44" = {
+      image = import <nix/fetchurl.nix> {
+        url = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2";
+        hash = "sha256-KGgP5bNxpaguv0OjGSbghqFo5ZlJ0DlpxQk+cHH5C38=";
+      };
+      system = "x86_64-linux";
+    };
 
     "rocky-v8" = {
       image = import <nix/fetchurl.nix> {

@@ -260,6 +260,7 @@ jobs:
           - ubuntu-v22_04
           - ubuntu-v24_04
           - fedora-v43
+          - fedora-v44
           - rocky-v8
           - rocky-v9
           - opensuse-leap-v15_6
