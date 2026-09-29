@@ -24,33 +24,43 @@
       ...
     }:
     let
+      inherit (nixpkgs) lib;
+
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
       ];
 
-      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: (forSystem system f));
+      # TODO: What about supporting cross? Probably best would be to just have a
+      # splicing compatible scope instead.
 
-      forSystem =
-        system: f:
-        f rec {
-          inherit system;
-          pkgs = import nixpkgs {
+      /**
+        Memoised instances of nixpkgs with the public overlay applied.
+      */
+      nixpkgsFor = lib.genAttrs supportedSystems (
+        system:
+        import nixpkgs {
+          localSystem = {
             inherit system;
-            overlays = [ self.overlays.default ];
           };
-          lib = pkgs.lib;
-        };
+          # TODO: Don't use overlays for internal packaging - that's not needed.
+          # Overlays is the public facing interface.
+          overlays = [ self.overlays.default ];
+        }
+      );
+
+      forAllSystems = lib.genAttrs supportedSystems;
 
       # Eval the treefmt modules from ./treefmt.nix
-      treefmtEval = forAllSystems ({ pkgs, ... }: treefmt-nix.lib.evalModule pkgs ./treefmt.nix);
+      treefmtEval = forAllSystems (system: treefmt-nix.lib.evalModule nixpkgsFor.${system} ./treefmt.nix);
 
       # Build the nix binary tarball and recompress with zstd
       # This is similar to nix's packaging/binary-tarball.nix but outputs zstd
       nixTarballZstd =
         { pkgs, system }:
         let
+          # TODO: Just use nix's makeComponents.
           nixPkg = nix.packages.${system}.nix;
           cacertPkg = pkgs.cacert;
           installerClosureInfo = pkgs.buildPackages.closureInfo {
@@ -263,7 +273,7 @@
     in
     {
       # for `nix fmt`
-      formatter = forAllSystems ({ system, ... }: treefmtEval.${system}.config.build.wrapper);
+      formatter = forAllSystems (system: treefmtEval.${system}.config.build.wrapper);
 
       overlays.default = final: prev: {
         nix-installer = installerPackage {
@@ -276,8 +286,9 @@
       };
 
       devShells = forAllSystems (
-        { system, pkgs, ... }:
+        system:
         let
+          pkgs = nixpkgsFor.${system};
           tarballPkg = nixTarballZstd { inherit pkgs system; };
         in
         {
@@ -326,8 +337,10 @@
       );
 
       checks = forAllSystems (
-        { system, pkgs, ... }:
+        system:
         let
+          pkgs = nixpkgsFor.${system};
+
           craneBuilds = mkCraneBuilds {
             inherit pkgs;
             stdenv = pkgs.stdenv;
@@ -343,28 +356,25 @@
           installerMajorMinor = versionParts installerVersion;
           nixMajorMinor = versionParts nixVersion;
 
-          vmTests = import ./nix/tests/vm-test {
-            inherit forSystem;
-            inherit (nixpkgs) lib;
-          };
-          containerTests = import ./nix/tests/container-test { inherit forSystem; };
-          vmTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
-            nixpkgs.lib.concatMapAttrs (
+          vmTests = import ./nix/tests/vm-test { inherit nixpkgsFor lib; };
+          containerTests = import ./nix/tests/container-test { inherit nixpkgsFor lib; };
+          vmTestChecks = lib.optionalAttrs (system == "x86_64-linux") (
+            lib.concatMapAttrs (
               distroName: distroTests:
               if distroName != "all" then
-                nixpkgs.lib.mapAttrs' (
-                  testName: test: nixpkgs.lib.nameValuePair "vm-test-${distroName}-${testName}" test
+                lib.mapAttrs' (
+                  testName: test: lib.nameValuePair "vm-test-${distroName}-${testName}" test
                 ) distroTests.x86_64-linux
               else
                 { }
             ) vmTests
           );
-          containerTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
-            nixpkgs.lib.concatMapAttrs (
+          containerTestChecks = lib.optionalAttrs (system == "x86_64-linux") (
+            lib.concatMapAttrs (
               distroName: distroTests:
               if distroName != "all" then
-                nixpkgs.lib.mapAttrs' (
-                  runtime: test: nixpkgs.lib.nameValuePair "container-test-${distroName}-${runtime}" test
+                lib.mapAttrs' (
+                  runtime: test: lib.nameValuePair "container-test-${distroName}-${runtime}" test
                 ) distroTests.x86_64-linux
               else
                 { }
@@ -391,25 +401,31 @@
       );
 
       packages = forAllSystems (
-        { system, pkgs, ... }:
+        system:
+        let
+          pkgs = nixpkgsFor.${system};
+        in
         {
           inherit (pkgs) nix-installer;
         }
-        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        // lib.optionalAttrs (system == "x86_64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
         }
-        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
+        // lib.optionalAttrs (system == "aarch64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
         }
-        // nixpkgs.lib.optionalAttrs (pkgs.stdenv.isDarwin) {
+        // lib.optionalAttrs (pkgs.stdenv.isDarwin) {
           default = pkgs.nix-installer;
         }
       );
 
       apps = forAllSystems (
-        { pkgs, ... }:
+        system:
+        let
+          pkgs = nixpkgsFor.${system};
+        in
         {
           test-action = {
             type = "app";
@@ -425,7 +441,7 @@
       );
 
       hydraJobs = {
-        build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
+        build = forAllSystems (system: self.packages.${system}.default);
       };
     };
 }

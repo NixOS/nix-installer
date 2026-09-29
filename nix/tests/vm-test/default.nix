@@ -1,6 +1,6 @@
 # Largely derived from https://github.com/NixOS/nix/blob/14f7dae3e4eb0c34192d0077383a7f2a2d630129/tests/installer/default.nix
 {
-  forSystem,
+  nixpkgsFor,
   lib,
 }:
 
@@ -454,7 +454,9 @@ let
     imageName: testName: test:
     let
       image = images.${imageName};
-      pkgs = forSystem image.system ({ system, pkgs, ... }: pkgs);
+      # TODO: Differentiate between nixpkgs platform and the platform that the
+      # VM test runs.
+      pkgs = nixpkgsFor.${image.system};
     in
     with pkgs;
     runCommand "installer-test-${imageName}-${testName}"
@@ -577,10 +579,9 @@ let
           (builtins.mapAttrs (testName: test: makeTest imageName testName test) doTests)
           // {
             "${name}" = (
-              with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
-              pkgs.releaseTools.aggregate {
+              nixpkgsFor.x86_64-linux.releaseTools.aggregate {
                 name = name;
-                constituents = (pkgs.lib.mapAttrsToList (testName: test: makeTest imageName testName test) doTests);
+                constituents = (lib.mapAttrsToList (testName: test: makeTest imageName testName test) doTests);
               }
             );
           };
@@ -597,8 +598,7 @@ let
 
   all-tests = builtins.mapAttrs (imageName: image: {
     "x86_64-linux".all = (
-      with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
-      pkgs.releaseTools.aggregate {
+      nixpkgsFor.x86_64-linux.releaseTools.aggregate {
         name = "all";
         constituents = [
           install-tests."${imageName}"."x86_64-linux".install
@@ -615,7 +615,9 @@ in
 lib.recursiveUpdate joined-tests {
   all."x86_64-linux" =
     (
-      with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
+      let
+        pkgs = nixpkgsFor.x86_64-linux;
+      in
       pkgs.lib.mapAttrs (
         caseName: case:
         pkgs.releaseTools.aggregate {

@@ -1,5 +1,5 @@
 # Largely derived from https://github.com/NixOS/nix/blob/14f7dae3e4eb0c34192d0077383a7f2a2d630129/tests/installer/default.nix
-{ forSystem }:
+{ lib, nixpkgsFor }:
 
 let
   images = {
@@ -30,32 +30,23 @@ let
     containerTool: imageName:
     let
       image = images.${imageName};
+      pkgs = nixpkgsFor.${image.system};
     in
-    with (forSystem image.system (
-      {
-        system,
-        pkgs,
-        lib,
-        ...
-      }:
-      pkgs
-    ));
-    testers.nixosTest {
+    pkgs.testers.nixosTest {
       name = "container-test-${imageName}";
       nodes = {
-        machine =
-          { config, pkgs, ... }:
-          {
-            virtualisation.${containerTool}.enable = true;
-            virtualisation.diskSize = 4 * 1024;
-          };
+        machine = {
+          virtualisation.${containerTool}.enable = true;
+          virtualisation.diskSize = 4 * 1024;
+        };
       };
       testScript = ''
         machine.start()
         machine.copy_from_host("${image.tarball}", "/image")
         machine.succeed("mkdir -p /test")
         machine.copy_from_host("${image.tester}", "/test/Dockerfile")
-        machine.copy_from_host("${nix-installer-static}", "/test/nix-installer")
+        # TODO: Stop grabbing this from the overlay.
+        machine.copy_from_host("${pkgs.nix-installer-static}", "/test/nix-installer")
         machine.succeed("${containerTool} import /image default")
         machine.succeed("${containerTool} build -t test /test")
       '';
@@ -63,7 +54,10 @@ let
 
   container-tests = builtins.mapAttrs (
     imageName: image:
-    (with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs)); {
+    let
+      pkgs = nixpkgsFor.${image.system};
+    in
+    {
       ${image.system} = rec {
         docker = makeTest "docker" imageName;
         podman = makeTest "podman" imageName;
@@ -75,7 +69,7 @@ let
           ];
         };
       };
-    })
+    }
   ) images;
 
 in
@@ -83,8 +77,7 @@ container-tests
 // {
   all."x86_64-linux" = rec {
     all = (
-      with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
-      pkgs.releaseTools.aggregate {
+      nixpkgsFor.x86_64-linux.releaseTools.aggregate {
         name = "all";
         constituents = [
           docker
@@ -93,17 +86,15 @@ container-tests
       }
     );
     docker = (
-      with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
-      pkgs.releaseTools.aggregate {
+      nixpkgsFor.x86_64-linux.releaseTools.aggregate {
         name = "all";
-        constituents = pkgs.lib.mapAttrsToList (name: value: value."x86_64-linux".docker) container-tests;
+        constituents = lib.mapAttrsToList (name: value: value."x86_64-linux".docker) container-tests;
       }
     );
     podman = (
-      with (forSystem "x86_64-linux" ({ system, pkgs, ... }: pkgs));
-      pkgs.releaseTools.aggregate {
+      nixpkgsFor.x86_64-linux.releaseTools.aggregate {
         name = "all";
-        constituents = pkgs.lib.mapAttrsToList (name: value: value."x86_64-linux".podman) container-tests;
+        constituents = lib.mapAttrsToList (name: value: value."x86_64-linux".podman) container-tests;
       }
     );
   };
