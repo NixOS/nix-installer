@@ -153,8 +153,7 @@ impl Action for SetupDefaultProfile {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn revert(&mut self) -> Result<(), ActionError> {
-        // SAFETY: This runs during single-threaded uninstall; no concurrent
-        // environment access occurs.
+        // SAFETY: The installer is single-threaded.
         unsafe { std::env::remove_var("NIX_SSL_CERT_FILE") };
 
         Ok(())

@@ -136,16 +136,18 @@ impl CommandExecute for Install {
                     },
                 }
 
-                // Notify the user about the nix command.
-                let nixcmd_message = format!(
-                    "{}{}{}{}{}",
-                    "\nNote:".bold(),
-                    " the experimental",
-                    " nix-command ".bold(),
-                    "feature has been enabled.\n",
-                    "Commands starting with `nix ` (e.g. `nix build`) are subject to interface changes.\n\n"
-                );
-                eprint!("{nixcmd_message}");
+                if settings.enable_flakes {
+                    // Notify the user about the nix command.
+                    let nixcmd_message = format!(
+                        "{}{}{}{}{}",
+                        "\nNote:".bold(),
+                        " the experimental",
+                        " nix-command ".bold(),
+                        "feature has been enabled.\n",
+                        "Commands starting with `nix ` (e.g. `nix build`) are subject to interface changes.\n\n"
+                    );
+                    eprint!("{nixcmd_message}");
+                }
             }
 
             let planner = match maybe_planner {

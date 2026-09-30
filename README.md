@@ -2,6 +2,10 @@
 
 Status: Beta
 
+> [!IMPORTANT]
+> This repo is undergoing [changes](https://github.com/NixOS/nix/issues/16134) to be integrated into the Nix release process.
+> Location of artifacts is subject to change.
+
 This is the official Nix installer maintained by the NixOS community. It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [`nixos.org/nix/install`](https://nixos.org/nix/install) shell script bundled with Nix.
 
 ## If you're having a problem with installing Nix, make sure to report issues in the right place.
@@ -336,12 +340,7 @@ curl -sSf -L https://github.com/NixOS/nix-installer/releases/download/${VERSION}
 ```
 
 Each installer version has an [associated supported nix version](src/settings.rs)&mdash;if you pin the installer version, you'll also indirectly pin to the associated nix version.
-
-You can also override the Nix version using `--nix-package-url` or `NIX_INSTALLER_NIX_PACKAGE_URL=` but doing this is not recommended since we haven't tested that combination.
-Here are some example Nix package URLs, including the Nix version, OS, and architecture:
-
-- https://releases.nixos.org/nix/nix-2.18.1/nix-2.18.1-x86_64-linux.tar.xz
-- https://releases.nixos.org/nix/nix-2.18.1/nix-2.18.1-aarch64-darwin.tar.xz
+Nix artifacts are embedded into the installer binary directly (as a zstd-compressed tarball) and can't be overridden.
 
 ## Installation differences
 
@@ -379,11 +378,9 @@ These settings are available for all commands.
 | `--nix-build-user-count`   | The number of build users to create                                                                | `32`                                 | `NIX_INSTALLER_NIX_BUILD_USER_COUNT`   |
 | `--nix-build-user-id-base` | The Nix build user base UID (ascending) (NOTE: the first UID will be this base + 1)                | `350` (macOS), `30000` (Linux)       | `NIX_INSTALLER_NIX_BUILD_USER_ID_BASE` |
 | `--nix-build-user-prefix`  | The Nix build user prefix (user numbers will be postfixed)                                         | `_nixbld` (macOS), `nixbld` (Linux)  | `NIX_INSTALLER_NIX_BUILD_USER_PREFIX`  |
-| `--nix-package-url`        | The Nix package URL                                                                                |                                      | `NIX_INSTALLER_NIX_PACKAGE_URL`        |
 | `--no-confirm`             | Run installation without requiring explicit user confirmation                                      | `false`                              | `NIX_INSTALLER_NO_CONFIRM`             |
 | `--no-modify-profile`      | Modify the user profile to automatically load Nix.                                                 | `true`                               | `NIX_INSTALLER_MODIFY_PROFILE`         |
-| `--proxy`                  | The proxy to use (if any); valid proxy bases are `https://$URL`, `http://$URL` and `socks5://$URL` |                                      | `NIX_INSTALLER_PROXY`                  |
-| `--ssl-cert-file`          | An SSL cert to use (if any); used for fetching Nix and sets `ssl-cert-file` in `/etc/nix/nix.conf` |                                      | `NIX_INSTALLER_SSL_CERT_FILE`          |
+| `--ssl-cert-file`          | An SSL cert to use (if any); sets `ssl-cert-file` in `/etc/nix/nix.conf`                           |                                      | `NIX_INSTALLER_SSL_CERT_FILE`          |
 | `--no-start-daemon`        | Start the daemon (if not `--init none`)                                                            | `true`                               | `NIX_INSTALLER_START_DAEMON`           |
 
 You can also specify a planner with the first argument:

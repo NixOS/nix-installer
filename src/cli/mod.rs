@@ -11,14 +11,12 @@ use eyre::WrapErr;
 use owo_colors::OwoColorize;
 use std::{
     ffi::CString,
-    path::PathBuf,
     process::ExitCode,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
-use url::Url;
 
 use self::subcommand::NixInstallerSubcommand;
 
@@ -36,20 +34,6 @@ A tool to install Nix or manage an existing installation.
 #[derive(Debug, Parser)]
 #[clap(version)]
 pub struct NixInstallerCli {
-    /// The proxy to use (if any); valid proxy bases are `https://$URL`, `http://$URL` and `socks5://$URL`
-    #[cfg_attr(
-        feature = "cli",
-        clap(long, env = "NIX_INSTALLER_PROXY", global = true)
-    )]
-    pub proxy: Option<Url>,
-
-    /// An SSL cert to use (if any); used for fetching Nix and sets `ssl-cert-file` in `/etc/nix/nix.conf`
-    #[cfg_attr(
-        feature = "cli",
-        clap(long, env = "NIX_INSTALLER_SSL_CERT_FILE", global = true)
-    )]
-    pub ssl_cert_file: Option<PathBuf>,
-
     #[clap(flatten)]
     pub instrumentation: arg::Instrumentation,
 
@@ -156,12 +140,8 @@ pub fn ensure_root() -> eyre::Result<()> {
                 "GITHUB_PATH" => true,
                 // Used for detecting what command to suggest for sourcing Nix
                 "SHELL" => true,
-                // Proxy settings (automatically picked up by Reqwest)
-                "HTTP_PROXY" | "http_proxy" | "HTTPS_PROXY" | "https_proxy" => true,
                 // Our own environments
                 key if key.starts_with("NIX_INSTALLER") => true,
-                // Kept for backward compatibility with existing installations
-                key if key.starts_with("DETSYS_") => true,
                 _ => false,
             };
             if preserve {

@@ -83,7 +83,6 @@ impl Action for ProvisionNix {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        // Execute sequentially (no async parallelism needed)
         self.fetch_nix.try_execute().map_err(Self::error)?;
 
         self.create_nix_tree.try_execute().map_err(Self::error)?;
