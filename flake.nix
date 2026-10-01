@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.follows = "nix/nixpkgs";
 
-    crane.url = "github:ipetkov/crane/v0.20.0";
+    crane.url = "github:ipetkov/crane";
 
     nix = {
       url = "github:NixOS/nix";
