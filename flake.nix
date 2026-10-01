@@ -8,8 +8,6 @@
 
     nix.url = "github:NixOS/nix/2.35.2";
 
-    flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
-
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
