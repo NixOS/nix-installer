@@ -6,7 +6,15 @@
 
     crane.url = "github:ipetkov/crane/v0.20.0";
 
-    nix.url = "github:NixOS/nix/2.35.2";
+    nix = {
+      url = "github:NixOS/nix/2.35.2";
+      # work around 7730 and https://github.com/NixOS/nix/issues/7807
+      inputs.flake-compat.follows = "";
+      inputs.nixpkgs-regression.follows = "";
+      inputs.nixpkgs-23-11.follows = "";
+      inputs.flake-parts.follows = "";
+      inputs.git-hooks-nix.follows = "";
+    };
 
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
