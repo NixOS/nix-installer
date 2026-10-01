@@ -32,7 +32,7 @@ Nix Installer
 A tool to install Nix or manage an existing installation.
 */
 #[derive(Debug, Parser)]
-#[clap(version)]
+#[clap(propagate_version = true)]
 pub struct NixInstallerCli {
     #[clap(flatten)]
     pub instrumentation: arg::Instrumentation,

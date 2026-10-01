@@ -52,11 +52,11 @@ impl Action for SetupDefaultProfile {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        let nix_pkg = PathBuf::from(nix_store_path());
-        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path());
+        let nix_pkg = PathBuf::from(nix_store_path().map_err(Self::error)?);
+        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path().map_err(Self::error)?);
 
         // Find the unpacked nix directory (nix-VERSION-SYSTEM)
-        let nix_version = nix_version();
+        let nix_version = nix_version().map_err(Self::error)?;
         let found_nix_paths: Vec<_> = std::fs::read_dir(&self.unpacked_path)
             .map_err(|e| ActionErrorKind::ReadDir(self.unpacked_path.clone(), e))
             .map_err(Self::error)?

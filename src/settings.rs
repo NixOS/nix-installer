@@ -2,6 +2,7 @@
 */
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
+use crate::payload::{self, PayloadError};
 #[cfg(feature = "cli")]
 use clap::{
     ArgAction,
@@ -14,23 +15,23 @@ pub const SCRATCH_DIR: &str = "/nix/temp-install-dir";
 pub const DEFAULT_NIX_BUILD_USER_GROUP_NAME: &str = "nixbld";
 
 /// The embedded Nix tarball (zstd compressed)
-pub fn embedded_nix_tarball() -> &'static [u8] {
-    &crate::payload::get().tarball
+pub fn embedded_nix_tarball() -> Result<&'static [u8], &'static PayloadError> {
+    Ok(&payload::get()?.tarball)
 }
 
 /// The store path of the nix package in the embedded tarball
-pub fn nix_store_path() -> &'static str {
-    crate::payload::get().nix_store_path.trim()
+pub fn nix_store_path() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.nix_store_path.trim())
 }
 
 /// The store path of the nss-cacert package in the embedded tarball
-pub fn nss_cacert_store_path() -> &'static str {
-    crate::payload::get().cacert_store_path.trim()
+pub fn nss_cacert_store_path() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.cacert_store_path.trim())
 }
 
 /// The version of Nix embedded in this installer
-pub fn nix_version() -> &'static str {
-    crate::payload::get().nix_version.trim()
+pub fn nix_version() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.nix_version.trim())
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]

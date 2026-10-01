@@ -84,8 +84,8 @@ impl Action for SetupChannels {
         // Place channel configuration
         self.create_file.try_execute()?;
 
-        let nix_pkg = PathBuf::from(nix_store_path());
-        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path());
+        let nix_pkg = PathBuf::from(nix_store_path().map_err(Self::error)?);
+        let nss_ca_cert_pkg = PathBuf::from(nss_cacert_store_path().map_err(Self::error)?);
 
         // Update nixpkgs channel
         execute_command(

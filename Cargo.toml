@@ -27,6 +27,7 @@ clap = { version = "4", features = [
   "suggestions",
   "derive",
   "env",
+  "string",
 ], optional = true }
 color-eyre = { version = "0.6.2", default-features = false, features = [
   "track-caller",
