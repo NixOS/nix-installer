@@ -1,5 +1,5 @@
 {
-  description = "Experimental Nix Installer";
+  description = "Nix Installer";
 
   inputs = {
     nixpkgs.follows = "nix/nixpkgs";
@@ -7,7 +7,7 @@
     crane.url = "github:ipetkov/crane/v0.20.0";
 
     nix = {
-      url = "github:NixOS/nix/2.35.2";
+      url = "github:NixOS/nix";
       # work around 7730 and https://github.com/NixOS/nix/issues/7807
       inputs.flake-compat.follows = "";
       inputs.nixpkgs-regression.follows = "";
