@@ -314,6 +314,15 @@ impl NixCommandExt for std::process::Command {
         Ok(self
             .args(["--option", "substitute", "false"])
             .args(["--option", "post-build-hook", ""])
+            // Don't assume the nix.conf we wrote is visible to this process:
+            // a rootless install may have placed it outside /etc/nix, or a
+            // caller may have NIX_CONF_DIR pointed elsewhere. Passing the
+            // required settings explicitly keeps profile setup self-contained.
+            // build-users-group must be cleared because nix's compiled-in
+            // default is "nixbld", which doesn't exist when installing with
+            // --nix-build-user-count 0.
+            .args(["--option", "experimental-features", "nix-command flakes"])
+            .args(["--option", "build-users-group", ""])
             .env_remove("NIX_REMOTE")
             .env("HOME", dirs::home_dir().ok_or(super::Error::NoRootHome)?)
             .env(

@@ -300,6 +300,9 @@ impl NixCommandExt for std::process::Command {
         Ok(self
             .args(["--option", "substitute", "false"])
             .args(["--option", "post-build-hook", ""])
+            // See the identical comment in nixprofile/mod.rs.
+            .args(["--option", "experimental-features", "nix-command flakes"])
+            .args(["--option", "build-users-group", ""])
             .env_remove("NIX_REMOTE")
             .env("HOME", dirs::home_dir().ok_or(super::Error::NoRootHome)?)
             .env(
