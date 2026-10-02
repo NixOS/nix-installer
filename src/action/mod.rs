@@ -519,6 +519,9 @@ pub enum ActionErrorKind {
     /// A MacOS (Darwin) plist related error
     #[error(transparent)]
     Plist(#[from] plist::Error),
+    /// Issues with the (or missing) embedded tarball and metadata.
+    #[error(transparent)]
+    Payload(#[from] &'static crate::payload::PayloadError),
     #[error(
         "Unexpected binary tarball contents found, the build result from `https://releases.nixos.org/?prefix=nix/` or `nix build nix#hydraJobs.binaryTarball.$SYSTEM` is expected"
     )]

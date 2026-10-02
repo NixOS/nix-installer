@@ -3,8 +3,8 @@ members = [".", "crates/nix-mountd"]
 
 [package]
 name = "nix-installer"
-description = "Experimental Nix Installer"
-version = "2.35.2"
+description = "Nix Installer"
+version = "2.36.0-dev"
 edition = "2024"
 license = "LGPL-2.1"
 repository = "https://github.com/NixOS/nix-installer"
@@ -27,6 +27,7 @@ clap = { version = "4", features = [
   "suggestions",
   "derive",
   "env",
+  "string",
 ], optional = true }
 color-eyre = { version = "0.6.2", default-features = false, features = [
   "track-caller",

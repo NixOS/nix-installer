@@ -55,28 +55,27 @@ pub struct Payload {
     pub nix_version: String,
 }
 
-static PAYLOAD: OnceLock<Payload> = OnceLock::new();
+#[derive(Debug, thiserror::Error)]
+pub enum PayloadError {
+    #[error(
+        "This nix-installer binary carries no Nix closure. Run `scripts/pack` to append one, or use a release build."
+    )]
+    Missing,
+    #[error("Reading appended Nix payload from own executable")]
+    Read(#[source] std::io::Error),
+}
 
-/// The appended payload, or exit with a hint if this is a bare binary
-/// that was never `pack`ed.
-pub fn get() -> &'static Payload {
-    PAYLOAD.get_or_init(|| match read_trailer() {
-        Ok(Some(p)) => {
-            tracing::debug!(nix_version = %p.nix_version, "Loaded appended Nix payload");
-            p
-        },
-        Ok(None) => {
-            tracing::error!(
-                "This nix-installer binary carries no Nix closure. \
-                 Run `scripts/pack` to append one, or use a release build.",
-            );
-            std::process::exit(1);
-        },
-        Err(e) => {
-            tracing::error!("Reading appended Nix payload from own executable: {e}");
-            std::process::exit(1);
-        },
-    })
+static PAYLOAD: OnceLock<Result<Payload, PayloadError>> = OnceLock::new();
+
+/// The appended payload, or an error for a bare `nix-installer` binary.
+pub fn get() -> Result<&'static Payload, &'static PayloadError> {
+    PAYLOAD
+        .get_or_init(|| {
+            read_trailer()
+                .map_err(PayloadError::Read)?
+                .ok_or(PayloadError::Missing)
+        })
+        .as_ref()
 }
 
 fn read_trailer() -> io::Result<Option<Payload>> {

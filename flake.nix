@@ -1,14 +1,20 @@
 {
-  description = "Experimental Nix Installer";
+  description = "Nix Installer";
 
   inputs = {
     nixpkgs.follows = "nix/nixpkgs";
 
-    crane.url = "github:ipetkov/crane/v0.20.0";
+    crane.url = "github:ipetkov/crane";
 
-    nix.url = "github:NixOS/nix/2.35.2";
-
-    flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
+    nix = {
+      url = "github:NixOS/nix";
+      # work around 7730 and https://github.com/NixOS/nix/issues/7807
+      inputs.flake-compat.follows = "";
+      inputs.nixpkgs-regression.follows = "";
+      inputs.nixpkgs-23-11.follows = "";
+      inputs.flake-parts.follows = "";
+      inputs.git-hooks-nix.follows = "";
+    };
 
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
