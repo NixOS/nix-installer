@@ -1,7 +1,9 @@
-use std::io::Cursor;
+use core::time::Duration;
 use std::path::PathBuf;
+use std::{io::Cursor, time::SystemTime};
 
 use tracing::{Span, span};
+use walkdir::WalkDir;
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -65,11 +67,26 @@ impl Action for FetchAndUnpackNix {
         // Unpack tar
         let mut archive = tar::Archive::new(Cursor::new(tar_data));
         archive.set_preserve_permissions(true);
+        // NOTE: Sigh... tar-rs forgets to preserve directories mtime.
         archive.set_preserve_mtime(true);
         archive.set_unpack_xattrs(true);
         archive
             .unpack(&self.dest)
             .map_err(|e| Self::error(UnpackError::Unarchive(e)))?;
+
+        // A bit of an oversimplification, but the only thing that needs correct mtime
+        // is the store - everything else is irrelevant.
+        let store_mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
+
+        // Because tar-rs is borked we have to set mtime on directories ourselves.
+        for entry in WalkDir::new(&self.dest).into_iter() {
+            let entry = entry.map_err(|e| Self::error(UnpackError::Unarchive(e.into())))?;
+
+            if entry.file_type().is_dir() {
+                filetime::set_file_mtime(entry.path(), store_mtime.into())
+                    .map_err(|e| Self::error(UnpackError::Unarchive(e)))?;
+            }
+        }
 
         Ok(())
     }

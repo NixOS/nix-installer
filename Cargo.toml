@@ -55,6 +55,7 @@ serde_json = { version = "1.0.150", default-features = false, features = [
   "std",
 ] }
 tar = { version = "0.4.45", default-features = false, features = ["xattr"] }
+filetime = "0.2.29"
 target-lexicon = { version = "0.13.4", default-features = false, features = [
   "std",
 ] }

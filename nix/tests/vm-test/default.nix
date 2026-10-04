@@ -61,6 +61,14 @@ let
         sudo -i nix --extra-experimental-features nix-command store ping
         nix --extra-experimental-features nix-command store ping
 
+        bad_mtime=$(find /nix/store/ -mindepth 1 ! -path /nix/store/.links \
+                    -exec sh -c '[ "$(stat -c %Y "{}")" -ne 1 ]' \; -print -quit)
+        if [ -n "$bad_mtime" ]; then
+          echo "bad filesystem object mtime after install:"
+          stat "$bad_mtime"
+          exit 1
+        fi
+
         out=$(nix-build --no-substitute -E 'derivation { name = "foo"; system = "x86_64-linux"; builder = "/bin/sh"; args = ["-c" "echo foobar > $out"]; }')
         [[ $(cat $out) = foobar ]]
       '';

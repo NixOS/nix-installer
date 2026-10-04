@@ -98,10 +98,11 @@
             # Create tarball matching nix's binary-tarball.nix structure
             # Use --hard-dereference to convert symlinks to regular files
             # Use --transform to rewrite /nix/store paths to $dir/store
+            # Store mtime is 1 second into the epoch.
             tar cf - \
               --sort=name \
               --owner=0 --group=0 --mode=u+rw,uga+r \
-              --mtime='1970-01-01' \
+              --mtime='@1' \
               --absolute-names \
               --hard-dereference \
               --transform "s,$TMPDIR/reginfo,$dir/.reginfo," \
