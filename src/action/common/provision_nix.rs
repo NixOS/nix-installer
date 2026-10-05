@@ -9,9 +9,14 @@ use crate::{
     settings::{CommonSettings, SCRATCH_DIR},
 };
 use std::os::unix::fs::MetadataExt as _;
+use std::path::Path;
 use std::path::PathBuf;
+use walkdir::WalkDir;
 
 pub(crate) const NIX_STORE_LOCATION: &str = "/nix/store";
+
+/// Group writable plus the sticky bit, matching what Nix itself applies on first use.
+const NIX_STORE_MODE: u32 = 0o1775;
 
 /**
 Place Nix and it's requirements onto the target
@@ -74,7 +79,7 @@ impl Action for ProvisionNix {
         buf.push(ActionDescription::new(
             "Synchronize /nix/store ownership".to_string(),
             vec![format!(
-                "Will update existing files in the Nix Store to use the Nix build group ID {nix_store_gid}"
+                "Will set /nix/store to mode {NIX_STORE_MODE:o} and group ID {nix_store_gid}, and the Nix installed inside it to User ID 0, Group ID 0"
             )],
         ));
 
@@ -89,7 +94,7 @@ impl Action for ProvisionNix {
 
         self.move_unpacked_nix.try_execute().map_err(Self::error)?;
 
-        ensure_nix_store_group(self.nix_store_gid).map_err(Self::error)?;
+        ensure_nix_store_group(self.nix_store_gid);
 
         Ok(())
     }
@@ -135,61 +140,64 @@ impl Action for ProvisionNix {
     }
 }
 
-/// Everything under /nix/store should be group-owned by the nix_build_group_id.
-/// This function walks /nix/store and makes sure that is true.
-fn ensure_nix_store_group(nix_store_gid: u32) -> Result<(), ActionErrorKind> {
-    let entryiter = walkdir::WalkDir::new(NIX_STORE_LOCATION)
+/// `/nix/store` itself is group-owned by `nix_store_gid` and group writable, so build users can
+/// create outputs there. Everything inside it, recursively, is owned by 0:0.
+fn ensure_nix_store_group(nix_store_gid: u32) {
+    let store = Path::new(NIX_STORE_LOCATION);
+    fix_ownership(store, 0, nix_store_gid, Some(NIX_STORE_MODE));
+
+    for path in WalkDir::new(store)
+        .min_depth(1)
         .follow_links(false)
         .same_file_system(true)
-        .contents_first(true)
         .into_iter()
-        .filter_entry(|entry| {
-            entry.path() == std::path::Path::new(NIX_STORE_LOCATION)
-                // ... or immediate children of the current directory
-                // Children of children are owned by the build process, and we don't
-                // want to own them to root.
-                || entry.path().parent() == Some(std::path::Path::new(NIX_STORE_LOCATION))
-        })
         .filter_map(|entry| match entry {
-            Ok(entry) => Some(entry),
+            Ok(entry) => Some(entry.into_path()),
             Err(e) => {
-                tracing::warn!(%e, "Failed to get entry in /nix/store");
+                let path = e
+                    .path()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default();
+                tracing::warn!(%e, path, "Failed to get entry in /nix/store");
                 None
             },
         })
-        .filter_map(|entry| match entry.metadata() {
-            Ok(metadata) => Some((entry, metadata)),
-            Err(e) => {
-                tracing::warn!(
-                    path = %entry.path().to_string_lossy(),
-                    %e,
-                    "Failed to read ownership and mode data"
-                );
-                None
-            },
-        })
-        .filter_map(|(entry, metadata)| {
-            // Dirents that are already the right group are to be skipped
-            if metadata.gid() == nix_store_gid {
-                return None;
-            }
+    {
+        fix_ownership(&path, 0, 0, None);
+    }
+}
 
-            Some((entry, metadata))
-        });
+/// Chown, and optionally chmod, unless already correct. Failures are only warnings: a single
+/// path we cannot fix should not abort the install.
+fn fix_ownership(path: &Path, uid: u32, gid: u32, mode: Option<u32>) {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        tracing::warn!(path = %path.display(), "Failed to read ownership and mode data");
+        return;
+    };
 
-    for (entry, _metadata) in entryiter {
-        tracing::debug!(
-            path = %entry.path().to_string_lossy(),
-            "Re-owning path's group to {nix_store_gid}"
-        );
+    let mode = mode.filter(|mode| metadata.mode() & 0o7777 != *mode);
 
-        if let Err(e) = std::os::unix::fs::lchown(entry.path(), None, Some(nix_store_gid)) {
+    if metadata.uid() == uid && metadata.gid() == gid && mode.is_none() {
+        return;
+    }
+
+    if metadata.uid() != uid || metadata.gid() != gid {
+        tracing::debug!(path = %path.display(), "Re-owning path to {uid}:{gid}");
+        if let Err(e) = std::os::unix::fs::lchown(path, Some(uid), Some(gid)) {
             tracing::warn!(
-                path = %entry.path().to_string_lossy(),
+                path = %path.display(),
                 %e,
-                "Failed to set the group to {nix_store_gid}"
+                "Failed to set the owner:group to {uid}:{gid}"
             );
         }
     }
-    Ok(())
+
+    if let Some(mode) = mode {
+        tracing::debug!(path = %path.display(), "Setting mode to {mode:o}");
+        if let Err(e) =
+            std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(mode))
+        {
+            tracing::warn!(path = %path.display(), %e, "Failed to set the mode to {mode:o}");
+        }
+    }
 }
