@@ -69,6 +69,18 @@ let
           exit 1
         fi
 
+        [ "$(stat -c '%a %U:%G' /nix/store)" = "1775 root:nixbld" ] || {
+          echo "/nix/store is not 1775 root:nixbld:"
+          stat /nix/store
+          exit 1
+        }
+        bad_owner=$(find /nix/store/ -mindepth 1 \( ! -user root -o ! -group root \) -print -quit)
+        if [ -n "$bad_owner" ]; then
+          echo "installed store path not owned by 0:0:"
+          stat "$bad_owner"
+          exit 1
+        fi
+
         out=$(nix-build --no-substitute -E 'derivation { name = "foo"; system = "x86_64-linux"; builder = "/bin/sh"; args = ["-c" "echo foobar > $out"]; }')
         [[ $(cat $out) = foobar ]]
       '';
