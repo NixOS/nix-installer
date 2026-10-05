@@ -6,7 +6,7 @@
 
 let
   nix-installer-install = ''
-    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=trace
+    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=debug
   '';
   nix-installer-install-quiet = ''
     RUST_BACKTRACE="full" ./nix-installer install --no-confirm
@@ -268,7 +268,7 @@ let
   nix-installer-cure-install = ''
     # Run installer with PATH that excludes Nix directories
     PATH=$(echo "$PATH" | tr ':' '\n' | grep -v nix | tr '\n' ':' | sed 's/:$//') \
-    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=trace
+    RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=debug
   '';
   cureSelfCases = {
     cure-self-linux-working = {
