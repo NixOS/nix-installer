@@ -13,10 +13,7 @@ pub(crate) struct NixProfile<'a> {
 }
 
 impl NixProfile<'_> {
-    pub(crate) fn install_packages(
-        &self,
-        to_default: super::WriteToDefaultProfile,
-    ) -> Result<(), super::Error> {
+    pub(crate) fn install_packages(&self) -> Result<(), super::Error> {
         self.validate_paths_can_cohabitate()?;
 
         let tmp = tempfile::tempdir().map_err(super::Error::CreateTempDir)?;
@@ -25,7 +22,7 @@ impl NixProfile<'_> {
         self.make_empty_profile(&temporary_profile)?;
 
         if let Ok(canon_profile) = self.profile.canonicalize() {
-            self.set_profile_to(Some(&temporary_profile), &canon_profile)?;
+            self.set_profile_to(&temporary_profile, &canon_profile)?;
         }
 
         let paths_by_pkg_output = self.collect_paths_by_package_output(&temporary_profile)?;
@@ -54,14 +51,8 @@ impl NixProfile<'_> {
             self.install_path(&temporary_profile, pkg)?;
         }
 
-        self.set_profile_to(
-            match to_default {
-                #[cfg(test)]
-                super::WriteToDefaultProfile::Isolated => Some(self.profile),
-                super::WriteToDefaultProfile::WriteToDefault => None,
-            },
-            &temporary_profile,
-        )?;
+        // Do not let NIX_PROFILE or HOME/.nix-profile redirect the system profile update.
+        self.set_profile_to(self.profile, &temporary_profile)?;
 
         Ok(())
     }
@@ -123,21 +114,14 @@ impl NixProfile<'_> {
         Ok(())
     }
 
-    fn set_profile_to(
-        &self,
-        profile: Option<&Path>,
-        canon_profile: &Path,
-    ) -> Result<(), super::Error> {
+    fn set_profile_to(&self, profile: &Path, canon_profile: &Path) -> Result<(), super::Error> {
         tracing::debug!("Duplicating the existing profile into the scratch profile");
 
         let mut cmd = std::process::Command::new(self.nix_store_path.join("bin/nix-env"));
 
         cmd.set_nix_options(self.nss_ca_cert_path)?;
-
-        if let Some(profile) = profile {
-            cmd.arg("--profile");
-            cmd.arg(profile);
-        }
+        cmd.arg("--profile");
+        cmd.arg(profile);
 
         let output = cmd.arg("--set").arg(canon_profile).output().map_err(|e| {
             super::Error::StartNixCommand(

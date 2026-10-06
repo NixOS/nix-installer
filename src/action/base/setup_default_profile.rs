@@ -4,7 +4,6 @@ use std::process::Command;
 
 use crate::{
     action::{ActionError, ActionErrorKind, ActionTag, StatefulAction},
-    profile::WriteToDefaultProfile,
     set_env,
     settings::{nix_store_path, nix_version, nss_cacert_store_path},
 };
@@ -132,7 +131,7 @@ impl Action for SetupDefaultProfile {
             pkgs: &[&nix_pkg, &nss_ca_cert_pkg],
         };
         profile
-            .install_packages(WriteToDefaultProfile::WriteToDefault)
+            .install_packages()
             .map_err(SetupDefaultProfileError::NixProfile)
             .map_err(Self::error)?;
 
