@@ -190,6 +190,10 @@ impl InstallPlan {
 
         self.write_receipt()?;
 
+        if !self.planner.should_run_self_test() {
+            return Ok(());
+        }
+
         if self.daemon_expected() {
             Self::wait_for_daemon_socket();
         }
