@@ -177,6 +177,10 @@ pub trait Planner: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
     fn try_default() -> Result<Self, PlannerError>
     where
         Self: Sized;
+    /// Whether the install environment can exercise the installed Nix.
+    fn should_run_self_test(&self) -> bool {
+        true
+    }
     /// Plan out the [`Action`]s for an [`InstallPlan`]
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError>;
     /// The settings being used by the planner
@@ -235,9 +239,7 @@ impl BuiltinPlanner {
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
                 Ok(Self::Linux(linux::Linux::try_default()?))
             },
-            (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::try_default()?))
-            },
+            (Architecture::Aarch64(_), OperatingSystem::Linux) => Self::detect_linux_distro(),
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
                 Ok(Self::Macos(macos::Macos::try_default()?))
@@ -255,9 +257,9 @@ impl BuiltinPlanner {
             return Ok(Self::SteamDeck(steam_deck::SteamDeck::try_default()?));
         }
 
-        // bootc images ship /usr/bin/bootc; check before ostree since bootc
-        // images are also ostree-based and the ostree check would match too.
-        if std::path::Path::new("/usr/bin/bootc").exists() {
+        if std::path::Path::new("/usr/bin/bootc").exists()
+            && !std::path::Path::new("/run/ostree-booted").exists()
+        {
             return Ok(Self::Bootc(bootc::Bootc::try_default()?));
         }
 
@@ -507,7 +509,10 @@ impl HasExpectedErrors for PlannerError {
                 if let Some(err) = _e.downcast_ref::<macos::MacosError>() {
                     return err.expected();
                 }
-                Some(Box::new(self))
+                if let Some(err) = _e.downcast_ref::<bootc::BootcError>() {
+                    return Some(Box::new(err));
+                }
+                None
             },
             this @ PlannerError::NixOs => Some(Box::new(this)),
             this @ PlannerError::NixExists => Some(Box::new(this)),

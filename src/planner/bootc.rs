@@ -1,60 +1,121 @@
+use super::linux::{check_nix_not_already_installed, check_not_nixos, check_not_wsl1};
 use crate::{
     Action, BuiltinPlanner,
     action::{
         StatefulAction,
         base::{CreateDirectory, CreateFile, RemoveDirectory},
-        common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
-        linux::{ProvisionSelinux, provision_selinux::SELINUX_POLICY_PP_CONTENT},
+        common::{ConfigureNix, CreateUsersAndGroups, ProvisionNix},
+        linux::{
+            ConfigureBootcInitService, ProvisionSelinux,
+            provision_selinux::SELINUX_POLICY_PP_CONTENT,
+        },
     },
-    planner::{Planner, PlannerError},
-    settings::{CommonSettings, InitSystem, InstallSettingsError},
+    planner::{Planner, PlannerError, ShellProfileLocations},
+    settings::{CommonSettings, InstallSettingsError},
 };
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
-use super::{
-    ShellProfileLocations,
-    linux::{check_nix_not_already_installed, check_not_nixos, check_not_wsl1, detect_selinux},
-};
-
-/// A planner for bootc container image builds.
-///
-/// bootc images are built without a running systemd and with a restricted
-/// filesystem layout: `/var`, `/home`, and `/root` do not exist during the
-/// build. Nix is installed into `/nix` which becomes part of the image layer.
-/// On first boot, `systemd-tmpfiles` copies `/nix` to `/var/lib/nix` (mutable
-/// storage), and a bind-mount makes it available at `/nix`.
+/// Install Nix while building a bootc image, without starting services.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "cli", derive(clap::Parser))]
 pub struct Bootc {
-    /// Where `/nix` will be bind-mounted from at boot time.
+    /// Persistent directory to bind mount at /nix after boot.
     #[cfg_attr(feature = "cli", clap(long, default_value = "/var/lib/nix"))]
     persistence: PathBuf,
     #[cfg_attr(feature = "cli", clap(flatten))]
     pub settings: CommonSettings,
 }
 
-/// Generate a sysusers.d config that recreates the nix build group and users
-/// on every boot via `systemd-sysusers`.
+impl Bootc {
+    fn plan_boot_files(
+        &self,
+        selinux: bool,
+    ) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        let persistence = self
+            .persistence
+            .to_str()
+            .ok_or(BootcError::InvalidPersistence)?;
+        let mut files = vec![
+            (
+                "/usr/lib/systemd/system/nix-store-setup.service",
+                include_str!("bootc/nix-store-setup.service").replace("@persistence@", persistence),
+            ),
+            (
+                "/usr/lib/systemd/system/nix.mount",
+                include_str!("bootc/nix.mount").replace("@persistence@", persistence),
+            ),
+            (
+                "/usr/lib/sysusers.d/nix-installer.conf",
+                generate_sysusers_config(&self.settings),
+            ),
+            (
+                "/usr/lib/tmpfiles.d/nix-installer.conf",
+                format!("C {persistence} - - - - /nix\n"),
+            ),
+        ];
+        if selinux {
+            files.push((
+                "/usr/lib/systemd/system/nix-store-label.service",
+                include_str!("bootc/nix-store-label.service").into(),
+            ));
+        }
+
+        let mut actions = Vec::new();
+        for directory in [
+            "/usr/lib/systemd/system",
+            "/usr/lib/sysusers.d",
+            "/usr/lib/tmpfiles.d",
+        ] {
+            actions.push(
+                CreateDirectory::plan(directory, None, None, 0o0755, false)
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+        for (path, contents) in files {
+            actions.push(
+                CreateFile::plan(path, None, None, 0o0644, contents, false)
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+        Ok(actions)
+    }
+}
+
 fn generate_sysusers_config(settings: &CommonSettings) -> String {
-    let mut config = String::new();
-    config.push_str(&format!(
+    let mut config = format!(
         "g {} {}\n",
         settings.nix_build_group_name, settings.nix_build_group_id
-    ));
+    );
     for i in 1..=settings.nix_build_user_count {
-        let uid = settings.nix_build_user_id_base + (i - 1);
         config.push_str(&format!(
             "u {prefix}{i} {uid}:{gid} \"Nix build user {i}\" /var/empty /sbin/nologin\n",
             prefix = settings.nix_build_user_prefix,
-            i = i,
-            uid = uid,
+            uid = settings.nix_build_user_id_base + i,
             gid = settings.nix_build_group_id,
         ));
     }
     config
+}
+
+fn validate_persistence(path: &Path) -> Result<(), BootcError> {
+    let Some(value) = path.to_str() else {
+        return Err(BootcError::InvalidPersistence);
+    };
+    if !path.starts_with("/var")
+        || path == Path::new("/var")
+        || path.components().any(|c| matches!(c, Component::ParentDir))
+        || value
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || "\"'\\%".contains(c))
+    {
+        return Err(BootcError::InvalidPersistence);
+    }
+    Ok(())
 }
 
 #[typetag::serde(name = "bootc")]
@@ -67,118 +128,29 @@ impl Planner for Bootc {
     }
 
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
-        let has_selinux = detect_selinux()?;
-        let mut plan = vec![];
+        validate_persistence(&self.persistence)?;
+        let mut shell_profiles = ShellProfileLocations::default();
+        shell_profiles
+            .fish
+            .vendor_confd_prefixes
+            .retain(|p| p != Path::new("/usr/share/fish/"));
 
-        // Install systemd units — they run after boot, not during the build.
-        // No nix-directory.service needed: /nix is already in the image layer
-        // and will be present at boot as part of the ostree commit.
-        let nix_mount_buf = format!(
-            "\
-                [Unit]\n\
-                Description=Mount `{persistence}` on `/nix`\n\
-                PropagatesStopTo=nix-daemon.service\n\
-                After=systemd-tmpfiles-setup.service\n\
-                ConditionPathIsDirectory=/nix\n\
-                DefaultDependencies=no\n\
-                \n\
-                [Mount]\n\
-                What={persistence}\n\
-                Where=/nix\n\
-                Type=none\n\
-                DirectoryMode=0755\n\
-                Options=bind\n\
-                \n\
-                [Install]\n\
-                RequiredBy=nix-daemon.service\n\
-                RequiredBy=nix-daemon.socket\n\
-            ",
-            persistence = self.persistence.display(),
-        );
-        plan.push(
-            CreateFile::plan(
-                "/etc/systemd/system/nix.mount",
-                None,
-                None,
-                0o0644,
-                nix_mount_buf,
-                false,
-            )
-            .map_err(PlannerError::Action)?
-            .boxed(),
-        );
-
-        // After the bind-mount, reload systemd so it picks up the nix units
-        // (which are symlinks into /nix) and start the daemon socket.
-        let start_nix_daemon_buf = "\
-            [Unit]\n\
-            Description=Start Nix daemon after /nix is mounted\n\
-            After=nix.mount\n\
-            Requires=nix.mount\n\
-            DefaultDependencies=no\n\
-            \n\
-            [Service]\n\
-            Type=oneshot\n\
-            RemainAfterExit=yes\n\
-            ExecStart=/usr/bin/systemctl daemon-reload\n\
-            ExecStart=/usr/bin/systemctl restart --no-block nix-daemon.socket\n\
-            \n\
-            [Install]\n\
-            WantedBy=sysinit.target\n\
-        "
-        .to_string();
-        plan.push(
-            CreateFile::plan(
-                "/etc/systemd/system/nix-daemon-start.service",
-                None,
-                None,
-                0o0644,
-                start_nix_daemon_buf,
-                false,
-            )
-            .map_err(PlannerError::Action)?
-            .boxed(),
-        );
-
-        // Create /nix so the standard install steps work.
-        plan.push(
+        let mut plan = vec![
             CreateDirectory::plan("/nix", None, None, 0o0755, true)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        plan.push(
-            ProvisionNix::plan(&self.settings.clone())
+            ProvisionNix::plan(&self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        plan.push(
             CreateUsersAndGroups::plan(self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
-        // We need to remove this path since it's part of the read-only install.
-        let mut shell_profile_locations = ShellProfileLocations::default();
-        if let Some(index) = shell_profile_locations
-            .fish
-            .vendor_confd_prefixes
-            .iter()
-            .position(|v| v == Path::new("/usr/share/fish/"))
-        {
-            shell_profile_locations
-                .fish
-                .vendor_confd_prefixes
-                .remove(index);
-        }
-
-        plan.push(
-            ConfigureNix::plan(shell_profile_locations, &self.settings)
+            ConfigureNix::plan(shell_profiles, &self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        );
-
+        ];
+        // The container host need not enable SELinux for the image to use it.
+        let has_selinux = Path::new("/etc/selinux/config").exists();
         if has_selinux {
             plan.push(
                 ProvisionSelinux::plan(
@@ -189,97 +161,38 @@ impl Planner for Bootc {
                 .boxed(),
             );
         }
-
-        plan.push(
-            CreateDirectory::plan("/etc/tmpfiles.d", None, None, 0o0755, false)
-                .map_err(PlannerError::Action)?
-                .boxed(),
-        );
-
-        // Install unit files but do NOT start the daemon — no systemd at build time.
-        plan.push(
-            ConfigureUpstreamInitService::plan(InitSystem::Systemd, false)
-                .map_err(PlannerError::Action)?
-                .boxed(),
-        );
-
-        // sysusers.d config — ensures build users are recreated on every boot.
-        plan.push(
-            CreateDirectory::plan("/etc/sysusers.d", None, None, 0o0755, false)
-                .map_err(PlannerError::Action)?
-                .boxed(),
-        );
-        plan.push(
-            CreateFile::plan(
-                "/etc/sysusers.d/nix-installer.conf",
-                None,
-                None,
-                0o0644,
-                generate_sysusers_config(&self.settings),
-                false,
-            )
-            .map_err(PlannerError::Action)?
-            .boxed(),
-        );
-
-        // tmpfiles.d config — copies /nix (from the image) to /var/lib/nix on
-        // first boot. The C directive only copies if the destination doesn't
-        // exist yet, so subsequent boots skip it.
-        plan.push(
-            CreateFile::plan(
-                "/etc/tmpfiles.d/nix-installer.conf",
-                None,
-                None,
-                0o0644,
-                format!("C {} - - - - /nix\n", self.persistence.display()),
-                false,
-            )
-            .map_err(PlannerError::Action)?
-            .boxed(),
-        );
-
+        plan.extend(self.plan_boot_files(has_selinux)?);
+        plan.push(ConfigureBootcInitService::plan(has_selinux).boxed());
         plan.push(
             RemoveDirectory::plan(crate::settings::SCRATCH_DIR)
                 .map_err(PlannerError::Action)?
                 .boxed(),
         );
-
         Ok(plan)
     }
 
     fn settings(&self) -> Result<HashMap<String, serde_json::Value>, InstallSettingsError> {
-        let Self {
-            persistence,
-            settings,
-        } = self;
-        let mut map = HashMap::default();
-
-        map.extend(settings.settings()?);
+        let mut map = self.settings.settings()?;
         map.insert(
-            "persistence".to_string(),
-            serde_json::to_value(persistence)?,
+            "persistence".into(),
+            serde_json::to_value(&self.persistence)?,
         );
-
+        map.insert("start_daemon".into(), serde_json::Value::Bool(false));
         Ok(map)
     }
 
     fn configured_settings(&self) -> Result<HashMap<String, serde_json::Value>, PlannerError> {
         let default = Self::try_default()?.settings()?;
-        let configured = self.settings()?;
-
-        let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
-        for (key, value) in configured.iter() {
-            if default.get(key) != Some(value) {
-                settings.insert(key.clone(), value.clone());
-            }
-        }
-
-        Ok(settings)
+        Ok(self
+            .settings()?
+            .into_iter()
+            .filter(|(k, v)| default.get(k) != Some(v))
+            .collect())
     }
 
     fn platform_check(&self) -> Result<(), PlannerError> {
         use target_lexicon::OperatingSystem;
-        match target_lexicon::OperatingSystem::host() {
+        match OperatingSystem::host() {
             OperatingSystem::Linux => Ok(()),
             host_os => Err(PlannerError::IncompatibleOperatingSystem {
                 planner: self.typetag_name(),
@@ -288,68 +201,106 @@ impl Planner for Bootc {
         }
     }
 
-    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
-        Err(PlannerError::Custom(Box::new(BootcUninstallError)))
-    }
-
     fn pre_install_check(&self) -> Result<(), PlannerError> {
         check_not_nixos()?;
         check_nix_not_already_installed()?;
         check_not_wsl1()?;
-        // No systemd check — bootc builds run without systemd.
+        validate_persistence(&self.persistence)?;
+        if Path::new("/run/ostree-booted").exists() {
+            return Err(BootcError::DeployedSystem.into());
+        }
         Ok(())
+    }
+
+    fn pre_uninstall_check(&self) -> Result<(), PlannerError> {
+        Err(BootcError::Uninstall.into())
+    }
+
+    fn should_run_self_test(&self) -> bool {
+        false
     }
 }
 
 impl From<Bootc> for BuiltinPlanner {
     fn from(val: Bootc) -> Self {
-        BuiltinPlanner::Bootc(val)
+        Self::Bootc(val)
     }
 }
 
-#[derive(Debug)]
-struct BootcUninstallError;
-
-impl std::fmt::Display for BootcUninstallError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Uninstall is not supported on bootc/immutable systems. \
-             To remove Nix, rebuild the container image without the \
-             `nix-installer install bootc` step."
-        )
-    }
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum BootcError {
+    #[error(
+        "The bootc planner is for container image builds. Use the ostree planner on a deployed system."
+    )]
+    DeployedSystem,
+    #[error(
+        "The bootc persistence path must be below /var and contain no parent traversal, whitespace, quotes, backslashes or systemd specifiers."
+    )]
+    InvalidPersistence,
+    #[error(
+        "Uninstall is not supported on bootc systems. Rebuild the image without Nix; the persistent store in /var is retained."
+    )]
+    Uninstall,
 }
 
-impl std::error::Error for BootcUninstallError {}
+impl From<BootcError> for PlannerError {
+    fn from(error: BootcError) -> Self {
+        Self::Custom(Box::new(error))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn sysusers_config_format() {
-        let settings = CommonSettings {
-            modify_profile: true,
-            nix_build_group_name: "nixbld".to_string(),
-            nix_build_group_id: 30000,
-            nix_build_user_prefix: "nixbld".to_string(),
-            nix_build_user_id_base: 30000,
-            nix_build_user_count: 3,
-            ssl_cert_file: None,
-            extra_conf: vec![],
-            force: false,
-            skip_nix_conf: false,
-            add_channel: false,
-        };
-
+    fn sysusers_ids_match_created_users() {
+        let mut settings = CommonSettings::try_default().unwrap();
+        settings.nix_build_user_id_base = 42000;
+        settings.nix_build_group_id = 41000;
+        settings.nix_build_group_name = format!("bootc-test-{}", std::process::id());
+        settings.nix_build_user_prefix = format!("bootc-builder-{}-", std::process::id());
+        settings.nix_build_user_count = 3;
+        let users = CreateUsersAndGroups::plan(settings.clone()).unwrap();
         let config = generate_sysusers_config(&settings);
-        let expected = "\
-g nixbld 30000
-u nixbld1 30000:30000 \"Nix build user 1\" /var/empty /sbin/nologin
-u nixbld2 30001:30000 \"Nix build user 2\" /var/empty /sbin/nologin
-u nixbld3 30002:30000 \"Nix build user 3\" /var/empty /sbin/nologin
-";
-        assert_eq!(config, expected);
+        for (index, line) in config.lines().skip(1).enumerate() {
+            let user = serde_json::to_value(&users.action.create_users[index]).unwrap();
+            let fields: Vec<_> = line.split_whitespace().collect();
+            assert_eq!(fields[1], user["action"]["name"].as_str().unwrap());
+            assert_eq!(
+                fields[2],
+                format!("{}:{}", user["action"]["uid"], settings.nix_build_group_id)
+            );
+        }
+    }
+
+    #[test]
+    fn persistence_is_a_literal_path_below_var() {
+        for path in ["/var/lib/nix", "/var/lib/custom-nix"] {
+            assert!(validate_persistence(Path::new(path)).is_ok());
+        }
+        for path in [
+            "/var",
+            "/nix",
+            "var/lib/nix",
+            "/variable/nix",
+            "/var/../etc",
+            "/var/lib/nix\nExecStart=bad",
+            "/var/lib/%n",
+            "/var/lib/nix store",
+            "/var/lib/\\nix",
+        ] {
+            assert!(
+                validate_persistence(Path::new(path)).is_err(),
+                "accepted {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn image_build_does_not_expect_a_daemon() {
+        let planner = Bootc::try_default().unwrap();
+        assert!(!planner.should_run_self_test());
+        assert_eq!(planner.settings().unwrap()["start_daemon"], false);
     }
 }

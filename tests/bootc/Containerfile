@@ -1,0 +1,11 @@
+ARG BOOTC_BASE_IMAGE=quay.io/fedora/fedora-bootc:43@sha256:b2840bac886b52bd1fe61705ac272682d6f2e1788d7077697c6e10a04cf57ab7
+FROM ${BOOTC_BASE_IMAGE}
+COPY nix-installer /tmp/nix-installer
+RUN test ! -e /root && \
+    /tmp/nix-installer install bootc --no-confirm --enable-flakes --extra-conf 'sandbox = false' && \
+    test ! -e /root && \
+    test -f /nix/receipt.json && \
+    test ! -L /usr/lib/tmpfiles.d/nix-daemon.conf && \
+    systemctl --root=/ is-enabled nix.mount nix-daemon.socket && \
+    rm /tmp/nix-installer && \
+    bootc container lint --no-truncate

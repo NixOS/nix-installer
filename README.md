@@ -35,7 +35,7 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable
 | Linux (`x86_64` and `aarch64`)                                       | ✓ (via [systemd]) |      ✓      |      Stable       |
 | MacOS (`aarch64`)                                                    |         ✓         |             | Stable (see note) |
 | ostree (Fedora Silverblue, etc.)                                     | ✓ (via [systemd]) |      ✓      |      Stable       |
-| [bootc] container images                                             | ✓ (via [systemd]) |      ✓      |      Stable       |
+| [bootc] container images                                             | ✓ (via [systemd]) |      ✓      |      Experimental |
 | [Valve Steam Deck][steam-deck] (SteamOS)                             |         ✓         |             |      Stable       |
 | [Windows Subsystem for Linux][wsl] 2 (WSL2) (`x86_64` and `aarch64`) | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Podman] Linux containers                                            | ✓ (via [systemd]) |      ✓      |      Stable       |
@@ -234,7 +234,7 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ### In bootc container image builds
 
 [bootc] container images are also ostree-based, but they are built without a running systemd
-and without `/var` (it is created on first boot). This means the ostree planner cannot be used
+and runtime directories such as `/root` may not exist. The ostree planner cannot be used
 during container builds. The dedicated `bootc` planner handles this lifecycle:
 
 1. **At build time**, Nix is installed into `/nix` which becomes part of the image layer.
@@ -243,21 +243,33 @@ during container builds. The dedicated `bootc` planner handles this lifecycle:
    are written but no daemons are started.
 2. **On first boot**, `systemd-tmpfiles` copies `/nix` to `/var/lib/nix` (mutable storage),
    `systemd-sysusers` recreates the build users, and a bind-mount makes `/var/lib/nix`
-   available at `/nix`. The Nix daemon starts automatically.
+   available at `/nix` before the normal tmpfiles setup. On SELinux images the mounted
+   store is relabeled before starting the Nix daemon.
+3. **On later boots and OS image deployments**, the existing persistent store is retained.
+   Nix in the persistent system profile is used; a new OS image does not replace that
+   installation. Keep the persistence path and build-user settings consistent between images.
 
-The `bootc` planner is auto-detected when `/usr/bin/bootc` is present, or can be selected
+The `bootc` planner is auto-detected in an image build when `/usr/bin/bootc` is present,
+or can be selected
 explicitly:
 
 ```dockerfile
 # Containerfile
-FROM quay.io/fedora/fedora-bootc:42
-RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install bootc \
+FROM quay.io/fedora/fedora-bootc:43
+COPY nix-installer /tmp/nix-installer
+RUN /tmp/nix-installer install bootc \
   --extra-conf "sandbox = false" --no-confirm
 ```
 
 > [!NOTE]
 > Uninstall is not supported on bootc systems. To remove Nix, rebuild the container image
-> without the `nix-installer install bootc` step.
+> without the `nix-installer install bootc` step. The persistent store in `/var` is retained.
+
+Build the experimental installer with `nix build .#nix-installer-static` and copy
+`result/bin/nix-installer` into the container build context before using the example above.
+The image build/lint test is `tests/bootc/test.sh result/bin/nix-installer`.
+First-boot, reboot, daemon and SELinux tests must run in a VM; do not boot a whole
+systemd image in a privileged container on the host.
 
 ### In GitHub Actions
 
