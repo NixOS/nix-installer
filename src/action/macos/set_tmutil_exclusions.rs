@@ -90,7 +90,6 @@ impl Action for SetTmutilExclusions {
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn execute(&mut self) -> Result<(), ActionError> {
-        // Just do sequential since parallelizing this will have little benefit
         for set_tmutil_exclusion in self.set_tmutil_exclusions.iter_mut() {
             set_tmutil_exclusion.try_execute().map_err(Self::error)?;
         }
@@ -108,7 +107,6 @@ impl Action for SetTmutilExclusions {
     #[tracing::instrument(level = "debug", skip_all)]
     fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
-        // Just do sequential since parallelizing this will have little benefit
         for set_tmutil_exclusion in self.set_tmutil_exclusions.iter_mut().rev() {
             if let Err(err) = set_tmutil_exclusion.try_revert() {
                 errors.push(err);

@@ -1,7 +1,10 @@
+[workspace]
+members = [".", "crates/nix-mountd"]
+
 [package]
 name = "nix-installer"
-description = "Experimental Nix Installer"
-version = "2.34.0"
+description = "Nix Installer"
+version = "2.36.0-dev"
 edition = "2024"
 license = "LGPL-2.1"
 repository = "https://github.com/NixOS/nix-installer"
@@ -24,6 +27,7 @@ clap = { version = "4", features = [
   "suggestions",
   "derive",
   "env",
+  "string",
 ], optional = true }
 color-eyre = { version = "0.6.2", default-features = false, features = [
   "track-caller",
@@ -37,7 +41,7 @@ eyre = { version = "0.6.8", default-features = false, features = [
   "track-caller",
 ], optional = true }
 glob = { version = "0.3.0", default-features = false }
-nix = { version = "0.31.2", default-features = false, features = [
+nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "fs",
   "process",
@@ -47,10 +51,11 @@ serde = { version = "1.0.203", default-features = false, features = [
   "std",
   "derive",
 ] }
-serde_json = { version = "1.0.149", default-features = false, features = [
+serde_json = { version = "1.0.150", default-features = false, features = [
   "std",
 ] }
-tar = { version = "0.4.38", default-features = false, features = ["xattr"] }
+tar = { version = "0.4.45", default-features = false, features = ["xattr"] }
+filetime = "0.2.29"
 target-lexicon = { version = "0.13.4", default-features = false, features = [
   "std",
 ] }
@@ -62,7 +67,7 @@ tracing = { version = "0.1.36", default-features = false, features = [
 tracing-error = { version = "0.2.0", default-features = false, optional = true, features = [
   "traced-error",
 ] }
-tracing-subscriber = { version = "0.3.22", default-features = false, features = [
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
   "std",
   "registry",
   "fmt",
@@ -71,16 +76,16 @@ tracing-subscriber = { version = "0.3.22", default-features = false, features = 
   "env-filter",
 ], optional = true }
 url = { version = "2.5.8", default-features = false, features = ["serde"] }
-zstd = { version = "0.13", default-features = false }
-plist = { version = "=1.8.0", default-features = false, features = ["serde"] }
-dirs = { version = "6.0.0", default-features = false }
-typetag = { version = "0.2.17", default-features = false }
+zstd = { version = "0.14", default-features = false }
+plist = { version = "=1.10.1", default-features = false, features = ["serde"] }
+dirs = { version = "7.0.0", default-features = false }
+typetag = { version = "0.2.22", default-features = false }
 dyn-clone = { version = "1.0.9", default-features = false }
-rand = { version = "0.10.0", default-features = false, features = [
+rand = { version = "0.10.1", default-features = false, features = [
   "std",
   "thread_rng",
 ] }
-semver = { version = "1.0.23", default-features = false, features = [
+semver = { version = "1.0.28", default-features = false, features = [
   "serde",
   "std",
 ] }
@@ -88,7 +93,7 @@ nix-config-parser = { version = "0.2", features = ["serde"] }
 
 sysctl = "0.7.1"
 walkdir = "2.3.3"
-tempfile = "3.25.0"
+tempfile = "3.27.0"
 
 [dev-dependencies]
 eyre = { version = "0.6.8", default-features = false, features = [

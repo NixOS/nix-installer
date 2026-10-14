@@ -12,6 +12,10 @@ jobs:
   build:
     name: Build (${{ matrix.system }})
 
+    permissions:
+      contents: read
+      actions: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -20,8 +24,6 @@ jobs:
             system: x86_64-linux
           - os: ubuntu-24.04-arm
             system: aarch64-linux
-          - os: macos-15-intel
-            system: x86_64-darwin
           - os: macos-15
             system: aarch64-darwin
 
@@ -29,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Nix
         uses: NixOS/nix-installer-action@main
@@ -37,12 +39,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v16
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Build the installer
         run: |
@@ -70,11 +68,15 @@ jobs:
   lints:
     name: Lints
 
+    permissions:
+      contents: read
+      actions: write
+
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Nix
         uses: NixOS/nix-installer-action@main
@@ -82,11 +84,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v16
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run checks (formatting, clippy)
         run: nix build .#checks.x86_64-linux.formatting .#checks.x86_64-linux.clippy -L
@@ -107,8 +106,6 @@ jobs:
             init: "no"
           - os: ubuntu-24.04-arm
             system: aarch64-linux
-          - os: macos-15-intel
-            system: x86_64-darwin
           - os: macos-15
             system: aarch64-darwin
 
@@ -116,7 +113,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download artifact
         id: download-installer
@@ -252,6 +249,9 @@ jobs:
   vm-tests:
     name: VM Tests - ${{ matrix.distro }}
     needs: [build, lints]
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -259,15 +259,15 @@ jobs:
         distro:
           - ubuntu-v22_04
           - ubuntu-v24_04
-          - fedora-v36
-          - fedora-v37
+          - fedora-v43
+          - fedora-v44
           - rocky-v8
           - rocky-v9
           - opensuse-leap-v15_6
-          - archlinux-v20260115
+          - archlinux-v20260915
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Nix
         uses: NixOS/nix-installer-action@main
@@ -275,37 +275,19 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v16
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run VM tests for ${{ matrix.distro }}
         run: |
-          # Build VM tests one at a time to avoid OOM.
-          # Each test spawns a 4 GB QEMU VM; running them in parallel
-          # exceeds the runner's RAM limit.
-          tests=$(nix eval --json '.#checks.x86_64-linux' \
-            --apply 'x: builtins.filter (n:
-              let prefix = "vm-test-${{ matrix.distro }}-"; in
-              builtins.substring 0 (builtins.stringLength prefix) n == prefix
-              && ! builtins.elem n [
-                "vm-test-${{ matrix.distro }}-all"
-                "vm-test-${{ matrix.distro }}-install"
-                "vm-test-${{ matrix.distro }}-cure-self"
-                "vm-test-${{ matrix.distro }}-uninstall"
-              ]
-            ) (builtins.attrNames x)')
-          for test in $(echo "$tests" | jq -r '.[]'); do
-            echo "::group::Building $test"
-            nix build ".#checks.x86_64-linux.$test" -L
-            echo "::endgroup::"
-          done
+          nix build ".#checks.x86_64-linux.vm-test-${{ matrix.distro }}-all" -L
 
   container-tests:
     name: Container Tests - ${{ matrix.distro }}
     needs: [build, lints]
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -316,7 +298,7 @@ jobs:
           - fedora-v42-bootc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Nix
         uses: NixOS/nix-installer-action@main
@@ -324,11 +306,8 @@ jobs:
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v16
-        with:
-          name: nix-installer
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Setup hestia cache
+        uses: Mic92/hestia/action@main
 
       - name: Run container tests for ${{ matrix.distro }}
         run: nix build .#checks.x86_64-linux.container-test-${{ matrix.distro }}-all -L

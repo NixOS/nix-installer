@@ -2,6 +2,7 @@
 */
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
+use crate::payload::{self, PayloadError};
 #[cfg(feature = "cli")]
 use clap::{
     ArgAction,
@@ -14,16 +15,24 @@ pub const SCRATCH_DIR: &str = "/nix/temp-install-dir";
 pub const DEFAULT_NIX_BUILD_USER_GROUP_NAME: &str = "nixbld";
 
 /// The embedded Nix tarball (zstd compressed)
-pub const EMBEDDED_NIX_TARBALL: &[u8] = include_bytes!(concat!(env!("NIX_TARBALL_PATH")));
+pub fn embedded_nix_tarball() -> Result<&'static [u8], &'static PayloadError> {
+    Ok(&payload::get()?.tarball)
+}
 
 /// The store path of the nix package in the embedded tarball
-pub const NIX_STORE_PATH: &str = env!("NIX_STORE_PATH");
+pub fn nix_store_path() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.nix_store_path.trim())
+}
 
 /// The store path of the nss-cacert package in the embedded tarball
-pub const NSS_CACERT_STORE_PATH: &str = env!("NSS_CACERT_STORE_PATH");
+pub fn nss_cacert_store_path() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.cacert_store_path.trim())
+}
 
 /// The version of Nix embedded in this installer
-pub const NIX_VERSION: &str = env!("NIX_VERSION");
+pub fn nix_version() -> Result<&'static str, &'static PayloadError> {
+    Ok(payload::get()?.nix_version.trim())
+}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
@@ -181,6 +190,26 @@ pub struct CommonSettings {
         )
     )]
     pub add_channel: bool,
+
+    /// Enable the `flakes` experimental feature.
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            action(ArgAction::SetTrue),
+            default_value = "false",
+            global = true,
+            env = "NIX_INSTALLER_ENABLE_FLAKES"
+        )
+    )]
+    #[serde(default = "legacy_enable_flakes_default")]
+    pub enable_flakes: bool,
+}
+
+// Receipts written before 2.35.2 always configured flakes. Keep that behavior
+// when their planner settings are deserialized for repair or uninstall.
+const fn legacy_enable_flakes_default() -> bool {
+    true
 }
 
 pub(crate) fn default_nix_build_user_id_base() -> u32 {
@@ -232,6 +261,7 @@ impl CommonSettings {
             force: false,
             skip_nix_conf: false,
             add_channel: false,
+            enable_flakes: false,
         })
     }
 
@@ -249,6 +279,7 @@ impl CommonSettings {
             force,
             skip_nix_conf,
             add_channel,
+            enable_flakes,
         } = self;
         let mut map = HashMap::default();
 
@@ -282,6 +313,7 @@ impl CommonSettings {
         map.insert("skip_nix_conf".into(), serde_json::to_value(skip_nix_conf)?);
 
         map.insert("add_channel".into(), serde_json::to_value(add_channel)?);
+        map.insert("enable_flakes".into(), serde_json::to_value(enable_flakes)?);
 
         Ok(map)
     }
@@ -293,7 +325,7 @@ fn linux_detect_systemd_started() -> bool {
     let mut started = false;
     if std::path::Path::new("/run/systemd/system").exists() {
         started = std::process::Command::new("systemctl")
-            .arg("status")
+            .args(["status", "--no-pager"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -478,7 +510,23 @@ impl clap::builder::TypedValueParser for UrlOrPathOrString {
 
 #[cfg(test)]
 mod tests {
-    use super::{FromStr, PathBuf, Url, UrlOrPathOrString};
+    use super::{CommonSettings, FromStr, PathBuf, Url, UrlOrPathOrString};
+
+    #[test]
+    fn legacy_common_settings_keep_flakes_enabled() -> Result<(), Box<dyn std::error::Error>> {
+        let settings = CommonSettings::try_default()?;
+        assert!(!settings.enable_flakes);
+
+        let mut legacy_receipt_settings = serde_json::to_value(settings)?;
+        legacy_receipt_settings
+            .as_object_mut()
+            .expect("CommonSettings must serialize as an object")
+            .remove("enable_flakes");
+
+        let parsed: CommonSettings = serde_json::from_value(legacy_receipt_settings)?;
+        assert!(parsed.enable_flakes);
+        Ok(())
+    }
 
     #[test]
     fn url_or_path_or_string_parses() -> Result<(), Box<dyn std::error::Error>> {

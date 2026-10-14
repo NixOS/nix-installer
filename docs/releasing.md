@@ -75,7 +75,6 @@ Check the build status at:
 The jobset builds installers for:
 - `x86_64-linux`
 - `aarch64-linux`
-- `x86_64-darwin`
 - `aarch64-darwin`
 
 ### Speeding Up Builds

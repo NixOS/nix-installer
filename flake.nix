@@ -1,14 +1,20 @@
 {
-  description = "Experimental Nix Installer";
+  description = "Nix Installer";
 
   inputs = {
     nixpkgs.follows = "nix/nixpkgs";
 
-    crane.url = "github:ipetkov/crane/v0.20.0";
+    crane.url = "github:ipetkov/crane";
 
-    nix.url = "github:NixOS/nix/2.34.0";
-
-    flake-compat.url = "github:edolstra/flake-compat/v1.0.0";
+    nix = {
+      url = "github:NixOS/nix";
+      # work around 7730 and https://github.com/NixOS/nix/issues/7807
+      inputs.flake-compat.follows = "";
+      inputs.nixpkgs-regression.follows = "";
+      inputs.nixpkgs-23-11.follows = "";
+      inputs.flake-parts.follows = "";
+      inputs.git-hooks-nix.follows = "";
+    };
 
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
@@ -24,34 +30,43 @@
       ...
     }:
     let
+      inherit (nixpkgs) lib;
+
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
 
-      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: (forSystem system f));
+      # TODO: What about supporting cross? Probably best would be to just have a
+      # splicing compatible scope instead.
 
-      forSystem =
-        system: f:
-        f rec {
-          inherit system;
-          pkgs = import nixpkgs {
+      /**
+        Memoised instances of nixpkgs with the public overlay applied.
+      */
+      nixpkgsFor = lib.genAttrs supportedSystems (
+        system:
+        import nixpkgs {
+          localSystem = {
             inherit system;
-            overlays = [ self.overlays.default ];
           };
-          lib = pkgs.lib;
-        };
+          # TODO: Don't use overlays for internal packaging - that's not needed.
+          # Overlays is the public facing interface.
+          overlays = [ self.overlays.default ];
+        }
+      );
+
+      forAllSystems = lib.genAttrs supportedSystems;
 
       # Eval the treefmt modules from ./treefmt.nix
-      treefmtEval = forAllSystems ({ pkgs, ... }: treefmt-nix.lib.evalModule pkgs ./treefmt.nix);
+      treefmtEval = forAllSystems (system: treefmt-nix.lib.evalModule nixpkgsFor.${system} ./treefmt.nix);
 
       # Build the nix binary tarball and recompress with zstd
       # This is similar to nix's packaging/binary-tarball.nix but outputs zstd
       nixTarballZstd =
         { pkgs, system }:
         let
+          # TODO: Just use nix's makeComponents.
           nixPkg = nix.packages.${system}.nix;
           cacertPkg = pkgs.cacert;
           installerClosureInfo = pkgs.buildPackages.closureInfo {
@@ -83,16 +98,18 @@
             # Create tarball matching nix's binary-tarball.nix structure
             # Use --hard-dereference to convert symlinks to regular files
             # Use --transform to rewrite /nix/store paths to $dir/store
+            # Store mtime is 1 second into the epoch.
             tar cf - \
+              --sort=name \
               --owner=0 --group=0 --mode=u+rw,uga+r \
-              --mtime='1970-01-01' \
+              --mtime='@1' \
               --absolute-names \
               --hard-dereference \
               --transform "s,$TMPDIR/reginfo,$dir/.reginfo," \
               --transform "s,$NIX_STORE,$dir/store,S" \
               $TMPDIR/reginfo \
               $(cat ${installerClosureInfo}/store-paths) \
-              | zstd -19 -T0 -o $out/nix.tar.zst
+              | zstd -19 -T1 -o $out/nix.tar.zst
           '';
 
       # Shared crane build setup - returns { package, clippy, cargoArtifacts }
@@ -109,10 +126,6 @@
             inherit pkgs;
             system = stdenv.hostPlatform.system;
           };
-          # Get paths directly from passthru - no IFD!
-          nixStorePath = tarballPkg.passthru.nixStorePath;
-          cacertStorePath = tarballPkg.passthru.cacertStorePath;
-          nixVersion = tarballPkg.passthru.nixVersion;
           sharedAttrs = {
             src = pkgs.lib.fileset.toSource {
               root = ./.;
@@ -121,14 +134,13 @@
                 ./Cargo.lock
                 ./build.rs
                 ./src
+                ./crates
                 ./tests
                 ./nix-installer.sh
                 ./rustfmt.toml
                 ./rust-toolchain.toml
               ];
             };
-
-            nativeBuildInputs = [ tarballPkg ];
 
             # Required to link build scripts.
             depsBuildBuild = [ buildPackages.stdenv.cc ];
@@ -142,35 +154,102 @@
               "CXX_${stdenv.hostPlatform.rust.cargoEnvVarTarget}" = "${stdenv.cc.targetPrefix}c++";
               "CARGO_TARGET_${stdenv.hostPlatform.rust.cargoEnvVarTarget}_LINKER" = "${stdenv.cc.targetPrefix}cc";
               CARGO_BUILD_TARGET = stdenv.hostPlatform.rust.rustcTarget;
-              # Path to the embedded tarball
-              NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
-              # Store paths known at compile time (no IFD - these come from passthru)
-              NIX_STORE_PATH = nixStorePath;
-              NSS_CACERT_STORE_PATH = cacertStorePath;
-              NIX_VERSION = nixVersion;
             };
           };
           cargoArtifacts = craneLib.buildDepsOnly sharedAttrs;
-        in
-        {
-          inherit cargoArtifacts;
 
-          package = craneLib.buildPackage (
+          # macOS-only helper embedded into the installer to keep /nix mounted
+          # on AWS EC2. Built separately so build.rs can embed it.
+          nixMountd = craneLib.buildPackage (
             sharedAttrs
             // {
               inherit cargoArtifacts;
+              pname = "nix-mountd";
+              cargoExtraArgs = "-p nix-mountd";
+              doCheck = false;
               env = sharedAttrs.env // {
-                RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
-                # The nixpkgs 25.11 darwin stdenv adds libiconv to NIX_LDFLAGS,
-                # causing the linker to pull it in as a dynamic dependency even
-                # though no iconv symbols are used. The nix-installer binary must
-                # run on macOS *before* Nix is installed, so it cannot reference
-                # /nix/store paths at runtime. Tell the linker to drop unused libs.
+                # Like the installer, nix-mountd must run before Nix exists (and
+                # when /nix is unmounted), so it cannot link /nix/store dylibs.
                 NIX_LDFLAGS = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin "-dead_strip_dylibs";
               };
+              # Enforce the above at build time.
+              nativeBuildInputs = pkgs.lib.optional stdenv.hostPlatform.isDarwin pkgs.darwin.cctools;
+              postInstall = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin ''
+                # otool's first line is the binary's own path; skip it.
+                if otool -L "$out/bin/nix-mountd" | tail -n +2 | grep -F /nix/store; then
+                  echo "error: nix-mountd links a /nix/store dylib (see above)" >&2
+                  exit 1
+                fi
+              '';
+            }
+          );
+
+          # Bare binary: no Nix closure yet.  Appended below via `pack`.
+          bare = craneLib.buildPackage (
+            sharedAttrs
+            // {
+              inherit cargoArtifacts;
+              cargoExtraArgs = "-p nix-installer";
+              # Tests run as a separate derivation (see `test` below) so the
+              # binary and test suite can build in parallel and we avoid
+              # paying the LTO link cost twice inside one derivation.
+              doCheck = false;
+              env =
+                sharedAttrs.env
+                // {
+                  RUSTFLAGS = "${if extraRustFlags != "" then " ${extraRustFlags}" else ""}";
+                  # The nixpkgs 25.11 darwin stdenv adds libiconv to NIX_LDFLAGS,
+                  # causing the linker to pull it in as a dynamic dependency even
+                  # though no iconv symbols are used. The nix-installer binary must
+                  # run on macOS *before* Nix is installed, so it cannot reference
+                  # /nix/store paths at runtime. Tell the linker to drop unused libs.
+                  NIX_LDFLAGS = pkgs.lib.optionalString stdenv.hostPlatform.isDarwin "-dead_strip_dylibs";
+                }
+                // pkgs.lib.optionalAttrs stdenv.hostPlatform.isDarwin {
+                  NIX_MOUNTD_BINARY_PATH = "${nixMountd}/bin/nix-mountd";
+                };
               postInstall = ''
                 cp nix-installer.sh $out/bin/nix-installer.sh
               '';
+            }
+          );
+        in
+        {
+          inherit cargoArtifacts tarballPkg bare;
+
+          package =
+            pkgs.runCommand "nix-installer-${tarballPkg.passthru.nixVersion}"
+              {
+                nativeBuildInputs = [
+                  pkgs.buildPackages.python3
+                ]
+                ++ pkgs.lib.optionals stdenv.hostPlatform.isDarwin [
+                  pkgs.buildPackages.darwin.sigtool
+                  pkgs.buildPackages.darwin.cctools
+                ];
+                __structuredAttrs = true;
+                unsafeDiscardReferences.out = true;
+                passthru = { inherit bare; };
+              }
+              ''
+                mkdir -p $out/bin
+                python3 ${./scripts/pack} \
+                  --input ${bare}/bin/nix-installer \
+                  --tarball ${tarballPkg}/nix.tar.zst \
+                  --nix-store-path ${tarballPkg.passthru.nixStorePath} \
+                  --cacert-store-path ${tarballPkg.passthru.cacertStorePath} \
+                  --nix-version ${tarballPkg.passthru.nixVersion} \
+                  --output $out/bin/nix-installer
+                install -m755 ${bare}/bin/nix-installer.sh $out/bin/nix-installer.sh
+              '';
+
+          test = craneLib.cargoTest (
+            sharedAttrs
+            // {
+              inherit cargoArtifacts;
+              # Override the release profile's fat LTO: tests only need to
+              # pass, not ship, and LTO adds ~55s of link time per build.
+              CARGO_PROFILE_RELEASE_LTO = "off";
             }
           );
 
@@ -201,7 +280,7 @@
     in
     {
       # for `nix fmt`
-      formatter = forAllSystems ({ system, ... }: treefmtEval.${system}.config.build.wrapper);
+      formatter = forAllSystems (system: treefmtEval.${system}.config.build.wrapper);
 
       overlays.default = final: prev: {
         nix-installer = installerPackage {
@@ -214,8 +293,9 @@
       };
 
       devShells = forAllSystems (
-        { system, pkgs, ... }:
+        system:
         let
+          pkgs = nixpkgsFor.${system};
           tarballPkg = nixTarballZstd { inherit pkgs system; };
         in
         {
@@ -223,10 +303,12 @@
             name = "nix-install";
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustcSrc}/library";
-            NIX_TARBALL_PATH = "${tarballPkg}/nix.tar.zst";
-            NIX_STORE_PATH = tarballPkg.passthru.nixStorePath;
-            NSS_CACERT_STORE_PATH = tarballPkg.passthru.cacertStorePath;
-            NIX_VERSION = tarballPkg.passthru.nixVersion;
+
+            # For `cargo build && scripts/pack ...` during development.
+            NIX_INSTALLER_DEV_TARBALL = "${tarballPkg}/nix.tar.zst";
+            NIX_INSTALLER_DEV_NIX_PATH = tarballPkg.passthru.nixStorePath;
+            NIX_INSTALLER_DEV_CACERT_PATH = tarballPkg.passthru.cacertStorePath;
+            NIX_INSTALLER_DEV_NIX_VERSION = tarballPkg.passthru.nixVersion;
 
             buildInputs =
               with pkgs;
@@ -262,8 +344,10 @@
       );
 
       checks = forAllSystems (
-        { system, pkgs, ... }:
+        system:
         let
+          pkgs = nixpkgsFor.${system};
+
           craneBuilds = mkCraneBuilds {
             inherit pkgs;
             stdenv = pkgs.stdenv;
@@ -279,28 +363,25 @@
           installerMajorMinor = versionParts installerVersion;
           nixMajorMinor = versionParts nixVersion;
 
-          vmTests = import ./nix/tests/vm-test {
-            inherit forSystem;
-            inherit (nixpkgs) lib;
-          };
-          containerTests = import ./nix/tests/container-test { inherit forSystem; };
-          vmTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
-            nixpkgs.lib.concatMapAttrs (
+          vmTests = import ./nix/tests/vm-test { inherit nixpkgsFor lib; };
+          containerTests = import ./nix/tests/container-test { inherit nixpkgsFor lib; };
+          vmTestChecks = lib.optionalAttrs (system == "x86_64-linux") (
+            lib.concatMapAttrs (
               distroName: distroTests:
               if distroName != "all" then
-                nixpkgs.lib.mapAttrs' (
-                  testName: test: nixpkgs.lib.nameValuePair "vm-test-${distroName}-${testName}" test
+                lib.mapAttrs' (
+                  testName: test: lib.nameValuePair "vm-test-${distroName}-${testName}" test
                 ) distroTests.x86_64-linux
               else
                 { }
             ) vmTests
           );
-          containerTestChecks = nixpkgs.lib.optionalAttrs (system == "x86_64-linux") (
-            nixpkgs.lib.concatMapAttrs (
+          containerTestChecks = lib.optionalAttrs (system == "x86_64-linux") (
+            lib.concatMapAttrs (
               distroName: distroTests:
               if distroName != "all" then
-                nixpkgs.lib.mapAttrs' (
-                  runtime: test: nixpkgs.lib.nameValuePair "container-test-${distroName}-${runtime}" test
+                lib.mapAttrs' (
+                  runtime: test: lib.nameValuePair "container-test-${distroName}-${runtime}" test
                 ) distroTests.x86_64-linux
               else
                 { }
@@ -320,32 +401,38 @@
               touch $out
             '';
 
-          inherit (craneBuilds) clippy;
+          inherit (craneBuilds) clippy test;
         }
         // vmTestChecks
         // containerTestChecks
       );
 
       packages = forAllSystems (
-        { system, pkgs, ... }:
+        system:
+        let
+          pkgs = nixpkgsFor.${system};
+        in
         {
           inherit (pkgs) nix-installer;
         }
-        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        // lib.optionalAttrs (system == "x86_64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
         }
-        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
+        // lib.optionalAttrs (system == "aarch64-linux") {
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
         }
-        // nixpkgs.lib.optionalAttrs (pkgs.stdenv.isDarwin) {
+        // lib.optionalAttrs (pkgs.stdenv.isDarwin) {
           default = pkgs.nix-installer;
         }
       );
 
       apps = forAllSystems (
-        { pkgs, ... }:
+        system:
+        let
+          pkgs = nixpkgsFor.${system};
+        in
         {
           test-action = {
             type = "app";
@@ -361,7 +448,7 @@
       );
 
       hydraJobs = {
-        build = forAllSystems ({ system, pkgs, ... }: self.packages.${system}.default);
+        build = forAllSystems (system: self.packages.${system}.default);
       };
     };
 }

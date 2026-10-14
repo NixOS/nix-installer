@@ -1,11 +1,13 @@
-use std::io::Cursor;
+use core::time::Duration;
 use std::path::PathBuf;
+use std::{io::Cursor, time::SystemTime};
 
 use tracing::{Span, span};
+use walkdir::WalkDir;
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
-    settings::{EMBEDDED_NIX_TARBALL, NIX_VERSION},
+    settings::embedded_nix_tarball,
     util::OnMissing,
 };
 
@@ -32,11 +34,7 @@ impl Action for FetchAndUnpackNix {
     }
 
     fn tracing_synopsis(&self) -> String {
-        format!(
-            "Unpack embedded Nix {} to `{}`",
-            NIX_VERSION.trim(),
-            self.dest.display()
-        )
+        format!("Unpack embedded Nix to `{}`", self.dest.display())
     }
 
     fn tracing_span(&self) -> Span {
@@ -62,18 +60,33 @@ impl Action for FetchAndUnpackNix {
         }
 
         // Decompress zstd
-        let zstd_reader = Cursor::new(EMBEDDED_NIX_TARBALL);
+        let zstd_reader = Cursor::new(embedded_nix_tarball().map_err(Self::error)?);
         let tar_data =
             zstd::decode_all(zstd_reader).map_err(|e| Self::error(UnpackError::Zstd(e)))?;
 
         // Unpack tar
         let mut archive = tar::Archive::new(Cursor::new(tar_data));
         archive.set_preserve_permissions(true);
+        // NOTE: Sigh... tar-rs forgets to preserve directories mtime.
         archive.set_preserve_mtime(true);
         archive.set_unpack_xattrs(true);
         archive
             .unpack(&self.dest)
             .map_err(|e| Self::error(UnpackError::Unarchive(e)))?;
+
+        // A bit of an oversimplification, but the only thing that needs correct mtime
+        // is the store - everything else is irrelevant.
+        let store_mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
+
+        // Because tar-rs is borked we have to set mtime on directories ourselves.
+        for entry in WalkDir::new(&self.dest).into_iter() {
+            let entry = entry.map_err(|e| Self::error(UnpackError::Unarchive(e.into())))?;
+
+            if entry.file_type().is_dir() {
+                filetime::set_file_mtime(entry.path(), store_mtime.into())
+                    .map_err(|e| Self::error(UnpackError::Unarchive(e)))?;
+            }
+        }
 
         Ok(())
     }

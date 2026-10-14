@@ -35,13 +35,6 @@ pub enum Error {
     Deserialization(#[from] serde_json::Error),
 }
 
-pub enum WriteToDefaultProfile {
-    WriteToDefault,
-
-    #[cfg(test)]
-    Isolated,
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum BackendType {
     NixEnv,
@@ -57,7 +50,7 @@ pub(crate) struct Profile<'a> {
 }
 
 impl Profile<'_> {
-    pub(crate) fn install_packages(&self, to_default: WriteToDefaultProfile) -> Result<(), Error> {
+    pub(crate) fn install_packages(&self) -> Result<(), Error> {
         match get_profile_backend_type(self.profile) {
             Some(BackendType::NixProfile) => nixprofile::NixProfile {
                 nix_store_path: self.nix_store_path,
@@ -65,14 +58,14 @@ impl Profile<'_> {
                 profile: self.profile,
                 pkgs: self.pkgs,
             }
-            .install_packages(to_default),
+            .install_packages(),
             _ => nixenv::NixEnv {
                 nix_store_path: self.nix_store_path,
                 nss_ca_cert_path: self.nss_ca_cert_path,
                 profile: self.profile,
                 pkgs: self.pkgs,
             }
-            .install_packages(to_default),
+            .install_packages(),
         }
     }
 }

@@ -19,11 +19,12 @@ use crate::{
         base::RemoveDirectory,
         common::{ConfigureNix, ConfigureUpstreamInitService, CreateUsersAndGroups, ProvisionNix},
         macos::{
-            ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, SetTmutilExclusions,
+            ConfigureRemoteBuilding, CreateNixHookService, CreateNixVolume, ProvisionNixMountd,
+            SetTmutilExclusions,
         },
     },
     execute_command,
-    os::darwin::DiskUtilInfoOutput,
+    os::darwin::{DiskUtilInfoOutput, diskutil::DiskUtilList},
     planner::{Planner, PlannerError},
     settings::InstallSettingsError,
     settings::{CommonSettings, InitSystem},
@@ -67,6 +68,23 @@ pub struct Macos {
     /// The root disk of the target
     #[cfg_attr(feature = "cli", clap(long, env = "NIX_INSTALLER_ROOT_DISK"))]
     pub root_disk: Option<String>,
+
+    /// On AWS EC2, put the Nix Store on the instance's internal disk to avoid the
+    /// interactive Full Disk Access prompt macOS requires for removable volumes.
+    ///
+    /// The internal disk is erased on Stop (but survives reboots), so the install
+    /// breaks if the instance is Stopped. A launchd watchdog remounts the volume,
+    /// which AWS's macOS deployment periodically unmounts. Auto-detects the root
+    /// disk when --root-disk is unset.
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            default_value = "false",
+            env = "NIX_INSTALLER_USE_EC2_INSTANCE_STORE"
+        )
+    )]
+    pub use_ec2_instance_store: bool,
 }
 
 fn default_root_disk() -> Result<String, PlannerError> {
@@ -82,11 +100,33 @@ fn default_root_disk() -> Result<String, PlannerError> {
     Ok(the_plist.parent_whole_disk)
 }
 
+fn default_internal_root_disk() -> Result<Option<String>, PlannerError> {
+    let buf = execute_command(
+        Command::new("/usr/sbin/diskutil")
+            .args(["list", "-plist", "internal", "virtual"])
+            .stdin(std::process::Stdio::null()),
+    )
+    .map_err(|e| PlannerError::Custom(Box::new(e)))?
+    .stdout;
+    let the_plist: DiskUtilList = plist::from_reader(Cursor::new(buf))?;
+
+    let mut disks = the_plist
+        .all_disks_and_partitions
+        .into_iter()
+        .filter(|disk| !disk.os_internal)
+        .collect::<Vec<_>>();
+
+    disks.sort_by_key(|d| d.size_bytes);
+
+    Ok(disks.pop().map(|d| d.device_identifier))
+}
+
 #[typetag::serde(name = "macos")]
 impl Planner for Macos {
     fn try_default() -> Result<Self, PlannerError> {
         Ok(Self {
             settings: CommonSettings::try_default()?,
+            use_ec2_instance_store: false,
             root_disk: Some(default_root_disk()?),
             case_sensitive: false,
             encrypt: None,
@@ -95,8 +135,15 @@ impl Planner for Macos {
     }
 
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError> {
+        if self.use_ec2_instance_store && !crate::distribution::NIX_MOUNTD_AVAILABLE {
+            return Err(PlannerError::Ec2InstanceStoreUnavailable);
+        }
+
         let root_disk = match &self.root_disk {
             root_disk @ Some(_) => root_disk.clone(),
+            None if self.use_ec2_instance_store => {
+                Some(default_internal_root_disk()?.ok_or(PlannerError::NoInternalDisk)?)
+            },
             None => Some(default_root_disk()?),
         };
 
@@ -150,12 +197,25 @@ impl Planner for Macos {
             },
         };
 
-        let mut plan = vec![
+        let mut plan = vec![];
+
+        // nix-mountd must exist before the volume service that runs it is
+        // bootstrapped by CreateNixVolume.
+        if self.use_ec2_instance_store {
+            plan.push(
+                ProvisionNixMountd::plan()
+                    .map_err(PlannerError::Action)?
+                    .boxed(),
+            );
+        }
+
+        plan.extend([
             CreateNixVolume::plan(
                 root_disk.unwrap(), /* We just ensured it was populated */
                 self.volume_label.clone(),
                 self.case_sensitive,
                 encrypt,
+                self.use_ec2_instance_store,
             )
             .map_err(PlannerError::Action)?
             .boxed(),
@@ -179,7 +239,7 @@ impl Planner for Macos {
             ConfigureRemoteBuilding::plan()
                 .map_err(PlannerError::Action)?
                 .boxed(),
-        ];
+        ]);
 
         if self.settings.modify_profile {
             plan.push(
@@ -208,6 +268,7 @@ impl Planner for Macos {
             volume_label,
             case_sensitive,
             root_disk,
+            use_ec2_instance_store,
         } = self;
         let mut map = HashMap::default();
 
@@ -215,6 +276,10 @@ impl Planner for Macos {
         map.insert("volume_encrypt".into(), serde_json::to_value(encrypt)?);
         map.insert("volume_label".into(), serde_json::to_value(volume_label)?);
         map.insert("root_disk".into(), serde_json::to_value(root_disk)?);
+        map.insert(
+            "use_ec2_instance_store".into(),
+            serde_json::to_value(use_ec2_instance_store)?,
+        );
         map.insert(
             "case_sensitive".into(),
             serde_json::to_value(case_sensitive)?,
@@ -255,6 +320,7 @@ impl Planner for Macos {
     }
 
     fn pre_install_check(&self) -> Result<(), PlannerError> {
+        check_macos_version()?;
         check_suis()?;
         check_not_running_in_rosetta()?;
 
@@ -266,6 +332,43 @@ impl From<Macos> for BuiltinPlanner {
     fn from(val: Macos) -> Self {
         BuiltinPlanner::Macos(val)
     }
+}
+
+/// The minimum macOS version required to run the bundled Nix.
+///
+/// Nix links against the system libc++ (`/usr/lib/libc++.1.dylib`).
+/// Since Nix 2.34, libnixexpr uses `std::pmr::memory_resource`, which
+/// was introduced in LLVM 16's libc++ and first shipped in macOS 14
+/// (Sonoma).  On older systems the dynamic linker aborts with
+/// "Symbol not found: __ZNSt3__13pmr15memory_resourceD2Ev".
+const MIN_MACOS_VERSION: (u64, u64) = (14, 0);
+
+fn check_macos_version() -> Result<(), PlannerError> {
+    use sysctl::{Ctl, Sysctl};
+
+    let ctl = Ctl::new("kern.osproductversion")?;
+    let version_string = ctl.value_string()?;
+
+    let parts: Vec<u64> = version_string
+        .trim()
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    let (major, minor) = (
+        parts.first().copied().unwrap_or(0),
+        parts.get(1).copied().unwrap_or(0),
+    );
+
+    if (major, minor) < MIN_MACOS_VERSION {
+        return Err(MacosError::UnsupportedMacosVersion {
+            got: version_string.trim().to_owned(),
+            min: format!("{}.{}", MIN_MACOS_VERSION.0, MIN_MACOS_VERSION.1),
+        })
+        .map_err(|e| PlannerError::Custom(Box::new(e)));
+    }
+
+    Ok(())
 }
 
 fn check_nix_darwin_not_installed() -> Result<(), PlannerError> {
@@ -356,6 +459,12 @@ pub enum MacosError {
 
     #[error("{0}")]
     BlockedBySystemUIServerPolicy(String),
+
+    #[error(
+        "macOS {got} is too old — Nix requires macOS {min} or later (the bundled Nix links against \
+         system libc++ which only provides std::pmr since macOS 14)"
+    )]
+    UnsupportedMacosVersion { got: String, min: String },
 }
 
 impl HasExpectedErrors for MacosError {
@@ -363,6 +472,7 @@ impl HasExpectedErrors for MacosError {
         match self {
             this @ MacosError::UninstallNixDarwin => Some(Box::new(this)),
             this @ MacosError::BlockedBySystemUIServerPolicy(_) => Some(Box::new(this)),
+            this @ MacosError::UnsupportedMacosVersion { .. } => Some(Box::new(this)),
         }
     }
 }

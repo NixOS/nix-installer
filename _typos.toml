@@ -13,9 +13,4 @@ distroname = "distroname"
 hda = "hda"                   # QEMU High Definition Audio device (intel-hda, hda-duplex)
 
 [files]
-extend-exclude = [
-  "*.lock",
-  "target/",
-  "src/action/linux/selinux/",
-  "nix/tests/vm-test/vagrant_insecure_key",
-]
+extend-exclude = ["*.lock", "target/", "src/action/linux/selinux/"]

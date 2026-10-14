@@ -50,6 +50,7 @@ impl ConfigureNix {
                     settings.ssl_cert_file.clone(),
                     settings.extra_conf.clone(),
                     settings.force,
+                    settings.enable_flakes,
                 )
                 .map_err(Self::error)?,
             )

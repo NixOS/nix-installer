@@ -165,9 +165,6 @@ impl InstallPlan {
 
         let Self { actions, .. } = self;
 
-        // This is **deliberately sequential**.
-        // Actions which are parallelizable are represented by "group actions" like CreateUsers
-        // The plan itself represents the concept of the sequence of stages.
         for action in actions {
             if let Some(ref signal) = cancel_signal
                 && signal.load(Ordering::Relaxed)
@@ -290,9 +287,6 @@ impl InstallPlan {
         let Self { actions, .. } = self;
         let mut errors = vec![];
 
-        // This is **deliberately sequential**.
-        // Actions which are parallelizable are represented by "group actions" like CreateUsers
-        // The plan itself represents the concept of the sequence of stages.
         for action in actions.iter_mut().rev() {
             if let Some(ref signal) = cancel_signal
                 && signal.load(Ordering::Relaxed)

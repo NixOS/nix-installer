@@ -71,8 +71,10 @@ match plan.install(None) {
 pub mod action;
 #[cfg(feature = "cli")]
 pub mod cli;
+pub(crate) mod distribution;
 mod error;
 mod os;
+pub mod payload;
 mod plan;
 pub mod planner;
 mod profile;

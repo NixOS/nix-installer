@@ -1,25 +1,17 @@
-use std::env;
-use std::path::Path;
+use std::{env, fs, path::PathBuf};
 
 fn main() {
-    // Get the tarball path from environment (set by flake.nix)
-    let tarball_path = env::var("NIX_TARBALL_PATH")
-        .expect("NIX_TARBALL_PATH must be set - build with `nix build` or `nix develop`");
-
-    // Verify the tarball exists
-    if !Path::new(&tarball_path).exists() {
-        panic!("NIX_TARBALL_PATH points to non-existent file: {tarball_path}");
-    }
-
-    // Verify other required env vars are set
-    env::var("NIX_STORE_PATH").expect("NIX_STORE_PATH must be set");
-    env::var("NSS_CACERT_STORE_PATH").expect("NSS_CACERT_STORE_PATH must be set");
-    env::var("NIX_VERSION").expect("NIX_VERSION must be set");
-
-    // Tell cargo to rerun if any of these change
-    println!("cargo:rerun-if-env-changed=NIX_TARBALL_PATH");
-    println!("cargo:rerun-if-env-changed=NIX_STORE_PATH");
-    println!("cargo:rerun-if-env-changed=NSS_CACERT_STORE_PATH");
-    println!("cargo:rerun-if-env-changed=NIX_VERSION");
-    println!("cargo:rerun-if-changed={tarball_path}");
+    // Embed the nix-mountd binary from NIX_MOUNTD_BINARY_PATH (set by the
+    // flake), falling back to an empty placeholder so plain `cargo build` works.
+    println!("cargo:rerun-if-env-changed=NIX_MOUNTD_BINARY_PATH");
+    let path = match env::var_os("NIX_MOUNTD_BINARY_PATH") {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR unset"));
+            let placeholder = out_dir.join("nix-mountd.placeholder");
+            fs::write(&placeholder, b"").expect("write nix-mountd placeholder");
+            placeholder
+        },
+    };
+    println!("cargo:rustc-env=NIX_MOUNTD_EMBED_PATH={}", path.display());
 }

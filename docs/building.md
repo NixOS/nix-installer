@@ -36,19 +36,16 @@ You can also add the installer to a system without Nix using [cargo], as there a
 
 ```shell
 # to build and run a local copy
-RUSTFLAGS="--cfg tokio_unstable" cargo run -- --help
+cargo run -- --help
 # to build the remote main development branch
-RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/NixOS/nix-installer
+cargo install --git https://github.com/NixOS/nix-installer
 nix-installer --help
 # for a specific version of the installer:
 export NIX_INSTALLER_TAG="v0.6.0"
-RUSTFLAGS="--cfg tokio_unstable" cargo install --git https://github.com/NixOS/nix-installer --tag $NIX_INSTALLER_TAG
+cargo install --git https://github.com/NixOS/nix-installer --tag $NIX_INSTALLER_TAG
 nix-installer --help
 ```
 
 To make this build portable, pass the `--target x86_64-unknown-linux-musl` option.
-
-> [!NOTE]
-> We currently require `--cfg tokio_unstable` as we utilize [Tokio's process groups](https://docs.rs/tokio/1.24.1/tokio/process/struct.Command.html#method.process_group), which wrap stable `std` APIs, but are unstable due to it requiring an MSRV bump.
 
 [cargo]: https://doc.rust-lang.org/cargo

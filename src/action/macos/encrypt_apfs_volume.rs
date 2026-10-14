@@ -8,7 +8,7 @@ use crate::{
         StatefulAction, macos::NIX_VOLUME_MOUNTD_DEST,
     },
     execute_command,
-    os::darwin::DiskUtilApfsListOutput,
+    os::darwin::{DiskUtilApfsListOutput, DiskUtilInfoOutput},
 };
 use rand::RngExt;
 use std::{
@@ -260,13 +260,35 @@ impl Action for EncryptApfsVolume {
             }
         }
 
-        execute_command(
-            Command::new("/usr/sbin/diskutil")
-                .arg("unmount")
-                .arg("force")
-                .arg(&self.name),
-        )
-        .map_err(Self::error)?;
+        // Force-unmounting a /nix volume that is serving live /nix/store mmaps
+        // severs those mappings; macOS then delivers SIGBUS to processes that
+        // page in code/libs from /nix/store. The later mount LaunchDaemon is a
+        // no-op against an already-correctly-mounted volume, so skip the unmount
+        // in that case. Mirrors UnmountApfsVolume::plan_skip_if_already_mounted_to_nix.
+        let already_mounted_at_nix = match DiskUtilInfoOutput::for_volume_name(&self.name) {
+            Ok(info) => {
+                Path::new(&info.parent_whole_disk) == self.disk
+                    && info.mount_point.as_deref() == Some(Path::new("/nix"))
+            },
+            Err(_) => false,
+        };
+
+        if already_mounted_at_nix {
+            tracing::debug!(
+                volume = %self.name,
+                disk = %self.disk.display(),
+                "Volume already mounted at /nix; skipping force-unmount to avoid \
+                 SIGBUS on processes with /nix/store mmaps"
+            );
+        } else {
+            execute_command(
+                Command::new("/usr/sbin/diskutil")
+                    .arg("unmount")
+                    .arg("force")
+                    .arg(&self.name),
+            )
+            .map_err(Self::error)?;
+        }
 
         Ok(())
     }

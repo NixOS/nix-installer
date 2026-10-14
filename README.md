@@ -2,6 +2,10 @@
 
 Status: Beta
 
+> [!IMPORTANT]
+> This repo is undergoing [changes](https://github.com/NixOS/nix/issues/16134) to be integrated into the Nix release process.
+> Location of artifacts is subject to change.
+
 This is the official Nix installer maintained by the NixOS community. It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [`nixos.org/nix/install`](https://nixos.org/nix/install) shell script bundled with Nix.
 
 ## If you're having a problem with installing Nix, make sure to report issues in the right place.
@@ -20,10 +24,16 @@ This one-liner is the quickest way to get started on any supported system:
 curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 ```
 
+To also enable the experimental `flakes` and `nix-command` features:
+
+```shell
+curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable-flakes
+```
+
 | Platform                                                             |    Multi user?    | `root` only |     Maturity      |
 | -------------------------------------------------------------------- | :---------------: | :---------: | :---------------: |
 | Linux (`x86_64` and `aarch64`)                                       | ✓ (via [systemd]) |      ✓      |      Stable       |
-| MacOS (`x86_64` and `aarch64`)                                       |         ✓         |             | Stable (see note) |
+| MacOS (`aarch64`)                                                    |         ✓         |             | Stable (see note) |
 | ostree (Fedora Silverblue, etc.)                                     | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [bootc] container images                                             | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Valve Steam Deck][steam-deck] (SteamOS)                             |         ✓         |             |      Stable       |
@@ -166,7 +176,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --init none --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --init none --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 ```
@@ -189,7 +199,7 @@ FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl systemd -y
 RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
-  --extra-conf "sandbox = false" --no-start-daemon --no-confirm
+  --extra-conf "sandbox = false" --enable-flakes --no-start-daemon --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
 CMD [ "/bin/systemd" ]
@@ -329,10 +339,9 @@ The Nix installer has numerous advantages over these options:
 - It keeps an installation _receipt_ for easy [uninstallation](#uninstalling)
 - It uses [planners](#planners) to create appropriate install plans for complicated targets&mdash;plans that you can review prior to installation
 - It enables you to perform a best-effort reversion in the facing of a failed install
-- It improves installation performance by maximizing parallel operations
 - It supports an expanded test suite including "curing" cases (compatibility with Nix already on the system)
 - It supports SELinux and OSTree-based distributions without asking users to make compromises
-- It operates as a single, static binary with external dependencies such as [OpenSSL], only calling existing system tools (like `useradd`) when necessary
+- It operates as a single, self-contained static binary, only calling existing system tools (like `useradd`) when necessary
 - As a macOS remote build target, it ensures that Nix is present on the `PATH`
 
 ## Nix community involvement
@@ -374,12 +383,7 @@ curl -sSf -L https://github.com/NixOS/nix-installer/releases/download/${VERSION}
 ```
 
 Each installer version has an [associated supported nix version](src/settings.rs)&mdash;if you pin the installer version, you'll also indirectly pin to the associated nix version.
-
-You can also override the Nix version using `--nix-package-url` or `NIX_INSTALLER_NIX_PACKAGE_URL=` but doing this is not recommended since we haven't tested that combination.
-Here are some example Nix package URLs, including the Nix version, OS, and architecture:
-
-- https://releases.nixos.org/nix/nix-2.18.1/nix-2.18.1-x86_64-linux.tar.xz
-- https://releases.nixos.org/nix/nix-2.18.1/nix-2.18.1-aarch64-darwin.tar.xz
+Nix artifacts are embedded into the installer binary directly (as a zstd-compressed tarball) and can't be overridden.
 
 ## Installation differences
 
@@ -407,6 +411,7 @@ These settings are available for all commands.
 
 | Flag(s)                    | Description                                                                                        | Default (if any)                     | Environment variable                   |
 | -------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| `--enable-flakes`          | Enable the `flakes` experimental feature                                                           | `false`                              | `NIX_INSTALLER_ENABLE_FLAKES`          |
 | `--explain`                | Provide an explanation of the changes the installation process will make to your system            | `false`                              | `NIX_INSTALLER_EXPLAIN`                |
 | `--extra-conf`             | Extra configuration lines for `/etc/nix.conf`                                                      |                                      | `NIX_INSTALLER_EXTRA_CONF`             |
 | `--force`                  | Whether the installer should forcibly recreate files it finds existing                             | `false`                              | `NIX_INSTALLER_FORCE`                  |
@@ -416,11 +421,9 @@ These settings are available for all commands.
 | `--nix-build-user-count`   | The number of build users to create                                                                | `32`                                 | `NIX_INSTALLER_NIX_BUILD_USER_COUNT`   |
 | `--nix-build-user-id-base` | The Nix build user base UID (ascending) (NOTE: the first UID will be this base + 1)                | `350` (macOS), `30000` (Linux)       | `NIX_INSTALLER_NIX_BUILD_USER_ID_BASE` |
 | `--nix-build-user-prefix`  | The Nix build user prefix (user numbers will be postfixed)                                         | `_nixbld` (macOS), `nixbld` (Linux)  | `NIX_INSTALLER_NIX_BUILD_USER_PREFIX`  |
-| `--nix-package-url`        | The Nix package URL                                                                                |                                      | `NIX_INSTALLER_NIX_PACKAGE_URL`        |
 | `--no-confirm`             | Run installation without requiring explicit user confirmation                                      | `false`                              | `NIX_INSTALLER_NO_CONFIRM`             |
 | `--no-modify-profile`      | Modify the user profile to automatically load Nix.                                                 | `true`                               | `NIX_INSTALLER_MODIFY_PROFILE`         |
-| `--proxy`                  | The proxy to use (if any); valid proxy bases are `https://$URL`, `http://$URL` and `socks5://$URL` |                                      | `NIX_INSTALLER_PROXY`                  |
-| `--ssl-cert-file`          | An SSL cert to use (if any); used for fetching Nix and sets `ssl-cert-file` in `/etc/nix/nix.conf` |                                      | `NIX_INSTALLER_SSL_CERT_FILE`          |
+| `--ssl-cert-file`          | An SSL cert to use (if any); sets `ssl-cert-file` in `/etc/nix/nix.conf`                           |                                      | `NIX_INSTALLER_SSL_CERT_FILE`          |
 | `--no-start-daemon`        | Start the daemon (if not `--init none`)                                                            | `true`                               | `NIX_INSTALLER_START_DAEMON`           |
 
 You can also specify a planner with the first argument:

@@ -146,55 +146,11 @@ impl Action for CreateUsersAndGroups {
             nix_build_user_id_base: _,
         } = self;
 
-        // Create group
         create_group.try_execute()?;
 
-        // Mac is apparently not threadsafe here...
-        use target_lexicon::OperatingSystem;
-        match OperatingSystem::host() {
-            OperatingSystem::MacOSX(_) | OperatingSystem::Darwin(_) => {
-                for create_user in create_users.iter_mut() {
-                    create_user.try_execute().map_err(Self::error)?;
-                }
-            },
-            _ => {
-                for create_user in create_users.iter_mut() {
-                    create_user.try_execute().map_err(Self::error)?;
-                }
-                // While we may be tempted to do something like this, it can break on many older OSes like Ubuntu 18.04:
-                // ```
-                // useradd: cannot lock /etc/passwd; try again later.
-                // ```
-                // So, instead, we keep this here in hopes one day we can enable it for some detected OS:
-                //
-                // let mut set = JoinSet::new();
-                // let mut errors: Vec<Box<ActionError>> = Vec::new();
-                // for (idx, create_user) in create_users.iter_mut().enumerate() {
-                //     let span = tracing::Span::current().clone();
-                //     let mut create_user_clone = create_user.clone();
-                //     let _abort_handle = set.spawn(async move {
-                //         create_user_clone.try_execute()?;
-                //         Result::<_, _>::Ok((idx, create_user_clone))
-                //     });
-                // }
-
-                // while let Some(result) = set.join_next() {
-                //     match result {
-                //         Ok(Ok((idx, success))) => create_users[idx] = success,
-                //         Ok(Err(e)) => errors.push(Box::new(e)),
-                //         Err(e) => return Err(ActionErrorKind::Join(e))?,
-                //     };
-                // }
-
-                // if !errors.is_empty() {
-                //     if errors.len() == 1 {
-                //         return Err(errors.into_iter().next().unwrap().into());
-                //     } else {
-                //         return Err(ActionErrorKind::Children(errors));
-                //     }
-                // }
-            },
-        };
+        for create_user in create_users.iter_mut() {
+            create_user.try_execute().map_err(Self::error)?;
+        }
 
         for add_user_to_group in add_users_to_groups.iter_mut() {
             add_user_to_group.try_execute().map_err(Self::error)?;
