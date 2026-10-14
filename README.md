@@ -235,7 +235,8 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 
 Use the `bootc` planner to install Nix while building a [bootc] container image.
 It writes systemd, sysusers and tmpfiles configuration without starting services.
-The planner is selected automatically when `/usr/bin/bootc` is present, or explicitly:
+The planner is selected automatically when `/usr/bin/bootc` is present and no
+systemd is running (as during an image build), or explicitly:
 
 ```dockerfile
 FROM quay.io/fedora/fedora-bootc:43
@@ -247,9 +248,11 @@ RUN /tmp/nix-installer install bootc \
 Build the installer with `nix build .#nix-installer-static` and copy
 `result/bin/nix-installer` into the build context.
 
-On first boot, the image's Nix store is copied to `/var/lib/nix` and mounted at
-`/nix`. Build users are recreated and SELinux labels are applied before the daemon
-starts. Set `--persistence` to use another directory below `/var`.
+On first boot, the image's Nix store is copied to `/var/lib/nix` — through a
+staging directory that is renamed into place, so an interrupted boot cannot
+leave a partial store — and mounted at `/nix`. Build users are recreated and
+SELinux labels are applied before the daemon starts. Set `--persistence` to use
+another directory below `/var`.
 
 Later boots and OS image updates retain the persistent store and its Nix profile.
 Keep the persistence path and build-user settings consistent between images.

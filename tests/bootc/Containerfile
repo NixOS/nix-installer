@@ -7,6 +7,7 @@ RUN test ! -e /root && \
       --no-confirm --enable-flakes --extra-conf 'sandbox = false' && \
     test ! -e /root && \
     test -f /nix/receipt.json && \
+    test -x /usr/lib/nix-installer/nix-store-setup.sh && \
     test ! -L /usr/lib/tmpfiles.d/nix-daemon.conf && \
     systemctl --root=/ is-enabled nix.mount nix-daemon.socket && \
     rm /tmp/nix-installer && \

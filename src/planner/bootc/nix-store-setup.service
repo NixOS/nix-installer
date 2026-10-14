@@ -7,4 +7,4 @@ Before=nix.mount
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/systemd-tmpfiles --create --prefix=@persistence@ /usr/lib/tmpfiles.d/nix-installer.conf
+ExecStart=/usr/lib/nix-installer/nix-store-setup.sh @persistence@ @staging@

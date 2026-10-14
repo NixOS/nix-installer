@@ -257,8 +257,12 @@ impl BuiltinPlanner {
             return Ok(Self::SteamDeck(steam_deck::SteamDeck::try_default()?));
         }
 
+        // A bootc CLI on a live system (deployed or merely installed) is not
+        // an image build; only select the bootc planner when no init is
+        // running, as in a container image build.
         if std::path::Path::new("/usr/bin/bootc").exists()
             && !std::path::Path::new("/run/ostree-booted").exists()
+            && !std::path::Path::new("/run/systemd/system").exists()
         {
             return Ok(Self::Bootc(bootc::Bootc::try_default()?));
         }

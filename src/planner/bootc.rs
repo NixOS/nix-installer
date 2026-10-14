@@ -38,27 +38,43 @@ impl Bootc {
             .persistence
             .to_str()
             .ok_or(BootcError::InvalidPersistence)?;
-        let mut files = vec![
+        // The first-boot store copy targets a staging directory that
+        // nix-store-setup.sh renames into place, so an interrupted copy is
+        // discarded instead of leaving a partial store.
+        let staging = format!("{persistence}.staging");
+        let mut files: Vec<(&str, u32, String)> = vec![
             (
                 "/usr/lib/systemd/system/nix-store-setup.service",
-                include_str!("bootc/nix-store-setup.service").replace("@persistence@", persistence),
+                0o0644,
+                include_str!("bootc/nix-store-setup.service")
+                    .replace("@persistence@", persistence)
+                    .replace("@staging@", &staging),
             ),
             (
                 "/usr/lib/systemd/system/nix.mount",
+                0o0644,
                 include_str!("bootc/nix.mount").replace("@persistence@", persistence),
             ),
             (
                 "/usr/lib/sysusers.d/nix-installer.conf",
+                0o0644,
                 generate_sysusers_config(&self.settings),
             ),
             (
-                "/usr/lib/tmpfiles.d/nix-installer.conf",
-                format!("C {persistence} - - - - /nix\n"),
+                "/usr/lib/nix-installer/nix-store-setup.sh",
+                0o0755,
+                include_str!("bootc/nix-store-setup.sh").into(),
+            ),
+            (
+                "/usr/lib/nix-installer/nix-store-copy.conf",
+                0o0644,
+                format!("C {staging} - - - - /nix\n"),
             ),
         ];
         if selinux {
             files.push((
                 "/usr/lib/systemd/system/nix-store-label.service",
+                0o0644,
                 include_str!("bootc/nix-store-label.service").into(),
             ));
         }
@@ -67,7 +83,7 @@ impl Bootc {
         for directory in [
             "/usr/lib/systemd/system",
             "/usr/lib/sysusers.d",
-            "/usr/lib/tmpfiles.d",
+            "/usr/lib/nix-installer",
         ] {
             actions.push(
                 CreateDirectory::plan(directory, None, None, 0o0755, false)
@@ -75,9 +91,9 @@ impl Bootc {
                     .boxed(),
             );
         }
-        for (path, contents) in files {
+        for (path, mode, contents) in files {
             actions.push(
-                CreateFile::plan(path, None, None, 0o0644, contents, false)
+                CreateFile::plan(path, None, None, mode, contents, false)
                     .map_err(PlannerError::Action)?
                     .boxed(),
             );
@@ -111,7 +127,7 @@ fn validate_persistence(path: &Path) -> Result<(), BootcError> {
         || path.components().any(|c| matches!(c, Component::ParentDir))
         || value
             .chars()
-            .any(|c| c.is_whitespace() || c.is_control() || "\"'\\%$".contains(c))
+            .any(|c| c.is_whitespace() || c.is_control() || "\"'\\%$;#".contains(c))
     {
         return Err(BootcError::InvalidPersistence);
     }
@@ -234,7 +250,7 @@ pub(crate) enum BootcError {
     )]
     DeployedSystem,
     #[error(
-        "The bootc persistence path must be below /var and contain no parent traversal, whitespace, quotes, backslashes, dollar signs or systemd specifiers."
+        "The bootc persistence path must be below /var and contain no parent traversal, whitespace, quotes, backslashes, dollar signs, semicolons, hashes or systemd specifiers."
     )]
     InvalidPersistence,
     #[error(
@@ -291,12 +307,32 @@ mod tests {
             "/var/lib/$USER",
             "/var/lib/nix store",
             "/var/lib/\\nix",
+            "/var/lib/n;ix",
+            "/var/lib/n#ix",
         ] {
             assert!(
                 validate_persistence(Path::new(path)).is_err(),
                 "accepted {path:?}"
             );
         }
+    }
+
+    #[test]
+    fn first_boot_store_copy_is_staged_and_renamed() {
+        let planner = Bootc {
+            persistence: PathBuf::from("/var/lib/nix"),
+            settings: CommonSettings::try_default().unwrap(),
+        };
+        let json = serde_json::to_string(&planner.plan_boot_files(false).unwrap()).unwrap();
+        // The copy targets a staging directory, not the persistence path.
+        assert!(json.contains("C /var/lib/nix.staging - - - - /nix"));
+        assert!(json.contains(
+            "/usr/lib/nix-installer/nix-store-setup.sh /var/lib/nix /var/lib/nix.staging"
+        ));
+        // The copy config must not be picked up by the generic boot-time
+        // tmpfiles pass, which would re-create the staging copy on every boot.
+        assert!(!json.contains("/usr/lib/tmpfiles.d/nix-installer.conf"));
+        assert!(!json.contains("C /var/lib/nix - - - - /nix"));
     }
 
     #[test]
