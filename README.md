@@ -233,43 +233,30 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
 
 ### In bootc container image builds
 
-[bootc] container images are also ostree-based, but they are built without a running systemd
-and runtime directories such as `/root` may not exist. The ostree planner cannot be used
-during container builds. The dedicated `bootc` planner handles this lifecycle:
-
-1. **At build time**, Nix is installed into `/nix` which becomes part of the image layer.
-   Systemd units, [sysusers.d](https://www.freedesktop.org/software/systemd/man/sysusers.d.html),
-   and [tmpfiles.d](https://www.freedesktop.org/software/systemd/man/tmpfiles.d.html) configs
-   are written but no daemons are started.
-2. **On first boot**, `systemd-tmpfiles` copies `/nix` to `/var/lib/nix` (mutable storage),
-   `systemd-sysusers` recreates the build users, and a bind-mount makes `/var/lib/nix`
-   available at `/nix` before the normal tmpfiles setup. On SELinux images the mounted
-   store is relabeled before starting the Nix daemon.
-3. **On later boots and OS image deployments**, the existing persistent store is retained.
-   Nix in the persistent system profile is used; a new OS image does not replace that
-   installation. Keep the persistence path and build-user settings consistent between images.
-
-The `bootc` planner is auto-detected in an image build when `/usr/bin/bootc` is present,
-or can be selected
-explicitly:
+Use the `bootc` planner to install Nix while building a [bootc] container image.
+It writes systemd, sysusers and tmpfiles configuration without starting services.
+The planner is selected automatically when `/usr/bin/bootc` is present, or explicitly:
 
 ```dockerfile
-# Containerfile
 FROM quay.io/fedora/fedora-bootc:43
 COPY nix-installer /tmp/nix-installer
 RUN /tmp/nix-installer install bootc \
   --extra-conf "sandbox = false" --no-confirm
 ```
 
-> [!NOTE]
-> Uninstall is not supported on bootc systems. To remove Nix, rebuild the container image
-> without the `nix-installer install bootc` step. The persistent store in `/var` is retained.
+Build the installer with `nix build .#nix-installer-static` and copy
+`result/bin/nix-installer` into the build context.
 
-Build the experimental installer with `nix build .#nix-installer-static` and copy
-`result/bin/nix-installer` into the container build context before using the example above.
-The image build/lint test is `tests/bootc/test.sh result/bin/nix-installer`.
-First-boot, reboot, daemon and SELinux tests must run in a VM; do not boot a whole
-systemd image in a privileged container on the host.
+On first boot, the image's Nix store is copied to `/var/lib/nix` and mounted at
+`/nix`. Build users are recreated and SELinux labels are applied before the daemon
+starts. Set `--persistence` to use another directory below `/var`.
+
+Later boots and OS image updates retain the persistent store and its Nix profile.
+Keep the persistence path and build-user settings consistent between images.
+To remove Nix, rebuild the image without the installation step; the store in `/var`
+is retained. The planner does not support uninstalling from a running bootc system.
+
+See the [bootc test guide](tests/bootc/README.md) for image-build and VM tests.
 
 ### In GitHub Actions
 

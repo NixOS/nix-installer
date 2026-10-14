@@ -111,7 +111,7 @@ fn validate_persistence(path: &Path) -> Result<(), BootcError> {
         || path.components().any(|c| matches!(c, Component::ParentDir))
         || value
             .chars()
-            .any(|c| c.is_whitespace() || c.is_control() || "\"'\\%".contains(c))
+            .any(|c| c.is_whitespace() || c.is_control() || "\"'\\%$".contains(c))
     {
         return Err(BootcError::InvalidPersistence);
     }
@@ -234,7 +234,7 @@ pub(crate) enum BootcError {
     )]
     DeployedSystem,
     #[error(
-        "The bootc persistence path must be below /var and contain no parent traversal, whitespace, quotes, backslashes or systemd specifiers."
+        "The bootc persistence path must be below /var and contain no parent traversal, whitespace, quotes, backslashes, dollar signs or systemd specifiers."
     )]
     InvalidPersistence,
     #[error(
@@ -287,6 +287,8 @@ mod tests {
             "/var/../etc",
             "/var/lib/nix\nExecStart=bad",
             "/var/lib/%n",
+            "/var/lib/${HOME}/nix",
+            "/var/lib/$USER",
             "/var/lib/nix store",
             "/var/lib/\\nix",
         ] {

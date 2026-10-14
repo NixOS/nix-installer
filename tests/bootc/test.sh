@@ -2,27 +2,34 @@
 set -euo pipefail
 
 if [[ $# != 1 ]]; then
-  echo "Usage: $0 /path/to/nix-installer" >&2
+  printf 'Usage: %s INSTALLER\n' "$0" >&2
   exit 2
 fi
 
 test_dir=$(mktemp -d -t nix-installer-bootc.XXXXXX)
-test_name=$(basename "$test_dir" | tr '[:upper:]' '[:lower:]')
-test_image="$test_name:local"
+test_image="nix-installer-bootc:${test_dir##*.}"
 
 cleanup() {
-  status=$?
+  local exit_code=$?
   docker image rm "$test_image" >/dev/null 2>&1 || true
-  rm -rf "$test_dir"
-  exit "$status"
+  rm -rf -- "$test_dir"
+  exit "$exit_code"
 }
 trap cleanup EXIT
 
 cp "$1" "$test_dir/nix-installer"
 chmod +x "$test_dir/nix-installer"
 cp "$(dirname "$0")/Containerfile" "$test_dir/Containerfile"
-docker build --progress=plain -f "$test_dir/Containerfile" -t "$test_image" "$test_dir"
+build_args=()
+if [[ -n ${BOOTC_BASE_IMAGE:-} ]]; then
+  build_args+=(--build-arg "BOOTC_BASE_IMAGE=$BOOTC_BASE_IMAGE")
+fi
+if [[ -n ${NIX_PERSISTENCE:-} ]]; then
+  build_args+=(--build-arg "NIX_PERSISTENCE=$NIX_PERSISTENCE")
+fi
+docker build --pull --progress=plain \
+  --file "$test_dir/Containerfile" \
+  --tag "$test_image" \
+  "${build_args[@]}" "$test_dir"
 
-# Runtime/first-boot tests must run in a VM. Starting an entire bootc system
-# in a privileged container can retrigger host devices and alter host sysctls.
-echo "bootc image build and lint passed; first-boot testing requires a VM"
+printf '%s\n' 'bootc image build and lint passed'

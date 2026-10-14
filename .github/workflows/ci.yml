@@ -65,6 +65,45 @@ jobs:
           name: nix-installer-${{ matrix.system }}
           path: install-root/
 
+  bootc:
+    name: "Bootc (${{ matrix.platform.system }}, ${{ matrix.image.name }}, ${{ matrix.persistence }})"
+    needs: [build]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - runner: ubuntu-24.04
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+        image:
+          - name: Fedora 43
+            reference: quay.io/fedora/fedora-bootc:43
+          - name: Silverblue 43
+            reference: quay.io/fedora-ostree-desktops/silverblue:43
+        persistence:
+          - /var/lib/nix
+          - /var/lib/nix-installer-test
+
+    runs-on: ${{ matrix.platform.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download installer
+        uses: actions/download-artifact@v8
+        with:
+          name: nix-installer-${{ matrix.platform.system }}
+          path: install-root/
+
+      - name: Build and lint bootc image
+        env:
+          BOOTC_BASE_IMAGE: ${{ matrix.image.reference }}
+          NIX_PERSISTENCE: ${{ matrix.persistence }}
+        run: tests/bootc/test.sh "install-root/nix-installer-${{ matrix.platform.system }}"
+
   lints:
     name: Lints
 
@@ -310,4 +349,3 @@ jobs:
 
       - name: Run container tests for ${{ matrix.distro }}
         run: nix build .#checks.x86_64-linux.container-test-${{ matrix.distro }}-all -L
-
