@@ -62,7 +62,25 @@
         let
           # TODO: Just use nix's makeComponents.
           nixPkg = nix.packages.${system}.nix;
-          cacertPkg = pkgs.cacert;
+          # https://github.com/NixOS/nixpkgs/pull/576347
+          cacertPkg = pkgs.cacert.overrideAttrs rec {
+            version = "3.131.1";
+
+            src = pkgs.fetchurl {
+              urls =
+                let
+                  # This file is effectively a public interface, see the homepage link
+                  file = "lib/ckfw/builtins/certdata.txt";
+                  tag = "NSS_${lib.replaceStrings [ "." ] [ "_" ] version}_RTM";
+                in
+                [
+                  # Prefer mercurial as the canonical source, while github is just a mirror
+                  "https://hg-edge.mozilla.org/projects/nss/raw-file/${tag}/${file}"
+                  "https://raw.githubusercontent.com/nss-dev/nss/refs/tags/${tag}/${file}"
+                ];
+              hash = "sha256-PsK00kDcEsdH6vRQBh24SvdXxIO72jAvninOtdcL5RA=";
+            };
+          };
           installerClosureInfo = pkgs.buildPackages.closureInfo {
             rootPaths = [
               nixPkg
