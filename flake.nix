@@ -136,7 +136,6 @@
                 ./src
                 ./crates
                 ./tests
-                ./nix-installer.sh
                 ./rustfmt.toml
                 ./rust-toolchain.toml
               ];
@@ -208,9 +207,6 @@
                 // pkgs.lib.optionalAttrs stdenv.hostPlatform.isDarwin {
                   NIX_MOUNTD_BINARY_PATH = "${nixMountd}/bin/nix-mountd";
                 };
-              postInstall = ''
-                cp nix-installer.sh $out/bin/nix-installer.sh
-              '';
             }
           );
         in
@@ -240,7 +236,6 @@
                   --cacert-store-path ${tarballPkg.passthru.cacertStorePath} \
                   --nix-version ${tarballPkg.passthru.nixVersion} \
                   --output $out/bin/nix-installer
-                install -m755 ${bare}/bin/nix-installer.sh $out/bin/nix-installer.sh
               '';
 
           test = craneLib.cargoTest (

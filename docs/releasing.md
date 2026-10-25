@@ -1,154 +1,108 @@
 # Releasing nix-installer
 
-This document describes how to ship a new version of nix-installer, typically
-when a new Nix version is released.
-
-## Overview
-
-The release process involves three main phases:
-
-1. **Bump the Nix version** - Update flake.nix and Cargo.toml
-2. **Wait for Hydra** - Let CI build binaries for all platforms
-3. **Create the release** - Assemble binaries and publish a GitHub release
+No binary artifacts are released from this repo starting 2.36 (first stable release of the installer).
+The only thing that needs to happen is producing a signed git tag.
+The binary release in handled from the [NixOS/nix](https://github.com/NixOS/nix) repository, documented in
+[release-process.md](https://github.com/NixOS/nix/blob/master/maintainers/release-process.md).
 
 ## Versioning Scheme
 
-nix-installer follows the Nix project's versioning:
+The installer is versioned separately from Nix, so regular patch releases of Nix usually don't need to apply any changes to nix-installer:
 
-- **Major.Minor**: Matches the Nix version being installed (e.g., `2.33.x`
-  installs Nix 2.33)
+- **Major.Minor**: Matches the Nix version being installed (e.g., `2.36.x` installs Nix 2.36)
 - **Patch**: Revision number for the installer itself
 
 Examples:
-- `2.33.0` - First release of the installer for Nix 2.33
-- `2.33.1` - Bugfix release for Nix 2.33
-- `2.34.0` - First release for Nix 2.34 (resets patch to 0)
 
-## Step 1: Bump Nix Version
+- `2.36.0` - First release of the installer for Nix 2.36
+- `2.36.1` - Bugfix release for Nix 2.36
+- `2.37.0` - First release for Nix 2.37 (resets patch to 0)
 
-### Option A: GitHub Actions (Recommended)
+## Creating a minor release for the corresponding Nix release.
 
-1. Go to **Actions** → **Bump Nix Version**
-2. Click **Run workflow** on the `main` branch
-3. The workflow will:
-   - Fetch the latest Nix version from GitHub
-   - Update `flake.nix` to point to the new Nix version
-   - Update `Cargo.toml` version (reset patch on major/minor bump, increment
-     otherwise)
-   - Run `nix flake update nix` and `cargo update`
-   - Create a PR titled "Bump Nix version"
+<!-- Once the first release actually happens, write a script to do all this legwork. -->
 
-### Option B: Manual
+* Create the Nix maintenance branch as described in [release-process.md](https://github.com/NixOS/nix/blob/master/maintainers/release-process.md).
+  Come back when you've created the release branch with `officialRelease = true`.
 
-```bash
-# Run the bump script
-nix run --inputs-from .# nixpkgs#python3 -- scripts/bump_nix_version.py
+* Make sure your `origin` remote points to the `NixOS/nix-installer` repository.
 
-# Review the changes
-git diff
+* Determine the intended release version (this should match the version of Nix you are releasing, e.g. 2.36.0):
 
-# Commit and push
-git checkout -b bump-nix-version
-git add -A
-git commit -m "Bump Nix version to X.Y.Z"
-git push origin bump-nix-version
-```
+  ```console
+  $ export VERSION=$(grep -Po 'version = "\K.*?(?=-dev")' Cargo.toml)
+  $ export MINOR_VERSION=$(echo "$VERSION" | cut -d. -f1,2)
+  ```
 
-The script automatically:
-- Fetches the latest stable Nix version from
-  `https://api.github.com/repos/NixOS/nix/tags`
-- Updates the Nix flake input in `flake.nix`
-- Adjusts the crate version in `Cargo.toml`:
-  - Major/minor bump → resets patch to 0
-  - Same major/minor → increments patch
+* Create a minor release maintenance branch:
 
-## Step 2: Wait for Hydra
+  ```console
+  $ git checkout main
+  $ git pull
+  $ git checkout -b $MINOR_VERSION-maintenance
+  ```
 
-After the PR is merged to `main`, Hydra will build the installer for all
-supported platforms.
+* Update the pinned nix release branch and drop the `-dev` suffix from the version in `Cargo.toml`:
 
-### Monitoring Builds
+  ```console
+  $ sed -i "s:$VERSION-dev:$VERSION:g" ./Cargo.toml
+  $ sed -i "s|github:NixOS/nix|github:NixOS/nix/$MINOR_VERSION-maintenance|g" ./flake.nix
+  $ nix flake update nix
+  $ nix run --inputs-from ./. -- nixpkgs#cargo update --workspace
+  $ git diff
+  $ git add Cargo.toml Cargo.lock flake.nix flake.lock
+  $ git commit -m "Bump version to $VERSION"
+  ```
 
-Check the build status at:
-**https://hydra.nixos.org/jobset/nix-installer/nix-installer**
+* Push the release branch:
 
-The jobset builds installers for:
-- `x86_64-linux`
-- `aarch64-linux`
-- `aarch64-darwin`
+  ```console
+  $ git push --set-upstream origin $MINOR_VERSION-maintenance
+  ```
 
-### Speeding Up Builds
+* Create a Hydra jobset by cloning the [`main` jobset](https://hydra.nixos.org/jobset/nix-installer/nix-installer).
+  The jobset name is `nix-installer-$MINOR_VERSION`.
+  This is only really needed for populating cache.nixos.org with the dependency closure and can be skipped.
 
-To prioritize your builds over other queued jobs:
+* Make sure that the [CI](https://github.com/NixOS/nix-installer/actions/workflows/ci.yml) succeeds on the release branch
+  after you've pushed it. The `main` branch should usually be sufficiently kept up to date with Nix `master` by dependabot,
+  but if issues crop up -- fix them as needed.
 
-1. Go to your evaluation page:
-   `https://hydra.nixos.org/eval/{EVAL_ID}`
-2. Click the **Actions** dropdown (gear icon)
-3. Select **"Bump builds to front of queue"**
+* Tag the release:
 
-This moves all builds from your evaluation to the front of the build queue,
-which can significantly reduce wait times when Hydra is busy.
+  ```console
+  $ git remote update origin
+  $ git tag --force --sign $VERSION -m "Tagging release $VERSION"
+  $ git push origin refs/tags/$VERSION
+  ```
 
-### What to Check
+* Update the version to the next expected patch release:
 
-1. **All builds must be green** - The release script will fail if any build is
-   incomplete
-2. **Correct commit** - Verify the evaluation matches your merged commit (the
-   release script validates this automatically)
+  ```console
+  $ export NEW_VERSION="$MINOR_VERSION.1"
+  $ sed -i "s:$VERSION:$NEW_VERSION:g" ./Cargo.toml
+  $ nix run --inputs-from ./. -- nixpkgs#cargo update --workspace
+  $ git add Cargo.toml Cargo.lock
+  $ git commit -m "Bump version to $NEW_VERSION"
+  ```
 
-You can view specific evaluations at:
-`https://hydra.nixos.org/jobset/nix-installer/nix-installer/evals`
+* Create a draft [GitHub release](https://github.com/NixOS/nix-installer/releases/new) for the installer.
 
-## Step 3: Create the Release
+* You are done here, go back to the Nix release process. Come back when the binary release of Nix is uploaded.
 
-### Option A: GitHub Actions (Recommended)
+* Publish the draft GitHub release you've created with relevant release notes for the installer itself.
 
-1. Go to **Actions** → **Generate Installer Script**
-2. Click **Run workflow**
-3. (Optional) Enter a specific Hydra eval ID for testing, or leave blank to use
-   the latest evaluation matching HEAD
-4. The workflow will:
-   - Verify Hydra builds are complete and match HEAD
-   - Download all platform binaries
-   - Substitute the version into `nix-installer.sh`
-   - Create a **draft** GitHub release
+<!-- TODO: gh cli for the draft release or github action. -->
 
-### Option B: Manual
+* Update the version on `main` branch and open a PR with the bump.
+  The CI checks will fail until you update Nix flake input to a Nix version from `master` with the corresponding version bump.
 
-```bash
-# Ensure you're on the commit that Hydra built
-git checkout main
-git pull
-
-# Run the assembly script
-nix run --inputs-from .# nixpkgs#python3 -- scripts/assemble_installer.py
-
-# Or with a specific eval ID for testing
-nix run --inputs-from .# nixpkgs#python3 -- scripts/assemble_installer.py 12345
-```
-
-### Publish the Release
-
-1. Go to the **Releases** page on GitHub
-2. Find the draft release created by the script
-3. Review the release notes (auto-generated from changelog)
-4. Edit the title/notes if needed
-5. Click **Publish release**
-
-## Post-Release
-
-### Verify the Release
-
-Test the installer script works:
-
-```bash
-curl -L https://github.com/NixOS/nix-installer/releases/download/X.Y.Z/nix-installer.sh | sh -s -- --help
-```
-
-## Reference
-
-- Hydra jobset: https://hydra.nixos.org/jobset/nix-installer/nix-installer
-- Bump script: `scripts/bump_nix_version.py`
-- Release script: `scripts/assemble_installer.py`
-- CI workflows: `.github/workflows/bump-nix-version.yml`,
-  `.github/workflows/release-script.yml`
+  ```console
+  $ git checkout main
+  $ git checkout -b bump-version
+  $ export NEW_VERSION="next.nix.version" # e.g. "2.37.0"
+  $ sed -i "s:$VERSION-dev:$NEW_VERSION-dev:g" ./Cargo.toml
+  $ git add Cargo.toml Cargo.lock
+  $ git commit -m "Bump version to $NEW_VERSION-dev"
+  $ git push --set-upstream origin bump-version
+  ```
