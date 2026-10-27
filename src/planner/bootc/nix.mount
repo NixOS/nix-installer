@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount the persistent Nix store
+DefaultDependencies=no
+Requires=nix-store-setup.service
+After=nix-store-setup.service
+Before=local-fs.target systemd-tmpfiles-setup.service
+
+[Mount]
+What=@persistence@
+Where=/nix
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target
