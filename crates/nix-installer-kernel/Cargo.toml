@@ -1,0 +1,22 @@
+[package]
+name = "nix-installer-kernel"
+description = "The nix-installer kernel: step specs, assessment, and the single spawn point"
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-2.1"
+repository = "https://github.com/NixOS/nix-installer"
+
+[dependencies]
+serde = { version = "1.0.203", default-features = false, features = [
+  "std",
+  "derive",
+] }
+serde_json = { version = "1.0.150", default-features = false, features = [
+  "std",
+] }
+thiserror = { version = "2.0.18", default-features = false }
+tracing = { version = "0.1.36", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+nix-installer-macros = { path = "../nix-installer-macros" }
+tempfile = "3.27.0"
