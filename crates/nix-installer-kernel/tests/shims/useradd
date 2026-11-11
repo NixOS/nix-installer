@@ -1,0 +1,24 @@
+#!/bin/sh
+# Fake useradd. Appends "name uid gid" to $KERNEL_TEST_STATE, and records
+# the invocation in $KERNEL_TEST_LOG when set. Exit 9 (EEXIST) mirrors
+# real useradd.
+state="${KERNEL_TEST_STATE:?KERNEL_TEST_STATE not set}"
+[ -n "$KERNEL_TEST_LOG" ] && echo useradd >>"$KERNEL_TEST_LOG"
+uid=""
+gid=""
+name=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -u) uid="$2"; shift 2 ;;
+    -g) gid="$2"; shift 2 ;;
+    -*) echo "useradd shim: unsupported flag: $1" >&2; exit 2 ;;
+    *) name="$1"; shift ;;
+  esac
+done
+[ -n "$name" ] || exit 2
+if grep -q "^$name " "$state" 2>/dev/null; then
+  echo "useradd: user '$name' already exists" >&2
+  exit 9
+fi
+echo "$name $uid $gid" >>"$state"
+exit 0

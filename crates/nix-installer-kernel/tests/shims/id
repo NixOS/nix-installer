@@ -1,0 +1,14 @@
+#!/bin/sh
+# Fake `id -u NAME`. Prints the uid from $KERNEL_TEST_STATE, or exits 1
+# (no such user) like the real one. $KERNEL_TEST_ID_STATUS, when set,
+# overrides the exit status.
+state="${KERNEL_TEST_STATE:?KERNEL_TEST_STATE not set}"
+[ -n "$KERNEL_TEST_ID_STATUS" ] && exit "$KERNEL_TEST_ID_STATUS"
+[ "$1" = "-u" ] || exit 2
+name="$2"
+line="$(grep "^$name " "$state" 2>/dev/null | head -n 1)"
+if [ -z "$line" ]; then
+  echo "id: '$name': no such user" >&2
+  exit 1
+fi
+echo "$line" | cut -d' ' -f2

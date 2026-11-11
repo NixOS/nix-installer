@@ -1,0 +1,9 @@
+#!/bin/sh
+# Fails on the first invocation and succeeds from the second on.
+# Invocations are counted in $KERNEL_TEST_LOG.
+log="${KERNEL_TEST_LOG:?KERNEL_TEST_LOG not set}"
+echo run >>"$log"
+if [ "$(wc -l <"$log")" -ge 2 ]; then
+  exit 0
+fi
+exit 1
