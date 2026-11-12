@@ -1,0 +1,15 @@
+[package]
+name = "nix-installer-macros"
+description = "Declaration macros for the nix-installer kernel (#[step])"
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-2.1"
+repository = "https://github.com/NixOS/nix-installer"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "2.0"

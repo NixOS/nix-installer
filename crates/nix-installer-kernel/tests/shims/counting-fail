@@ -1,0 +1,6 @@
+#!/bin/sh
+# Records each invocation in $KERNEL_TEST_LOG, then exits 1 to simulate a
+# persistent transient failure.
+log="${KERNEL_TEST_LOG:?KERNEL_TEST_LOG not set}"
+echo run >>"$log"
+exit 1

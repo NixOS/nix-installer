@@ -1,0 +1,3 @@
+#!/bin/sh
+# Exits 42.
+exit 42
