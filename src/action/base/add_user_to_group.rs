@@ -244,7 +244,9 @@ impl Action for AddUserToGroup {
                 "Remove user `{}` (UID {}) from group {} (GID {})",
                 self.name, self.uid, self.groupname, self.gid
             ),
-            vec!["The Nix daemon requires system users it can act as in order to build".to_string()],
+            vec![
+                "The Nix daemon requires system users it can act as in order to build".to_string(),
+            ],
         )]
     }
 

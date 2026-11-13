@@ -114,7 +114,9 @@ impl Action for CreateUser {
     fn execute_description(&self) -> Vec<ActionDescription> {
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec!["The Nix daemon requires system users it can act as in order to build".to_string()],
+            vec![
+                "The Nix daemon requires system users it can act as in order to build".to_string(),
+            ],
         )]
     }
 
@@ -195,7 +197,9 @@ impl Action for CreateUser {
                 "Delete user `{}` (UID {}) in group {} (GID {})",
                 self.name, self.uid, self.groupname, self.gid
             ),
-            vec!["The Nix daemon requires system users it can act as in order to build".to_string()],
+            vec![
+                "The Nix daemon requires system users it can act as in order to build".to_string(),
+            ],
         )]
     }
 

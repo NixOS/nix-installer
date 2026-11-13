@@ -71,7 +71,10 @@ impl Action for CreateGroup {
         let Self { name: _, gid: _ } = &self;
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec!["The nix daemon requires a system user group its system users can be part of".to_string()],
+            vec![
+                "The nix daemon requires a system user group its system users can be part of"
+                    .to_string(),
+            ],
         )]
     }
 
@@ -134,7 +137,10 @@ impl Action for CreateGroup {
         let Self { name, gid } = &self;
         vec![ActionDescription::new(
             format!("Delete group `{name}` (GID {gid})"),
-            vec!["The nix daemon requires a system user group its system users can be part of".to_string()],
+            vec![
+                "The nix daemon requires a system user group its system users can be part of"
+                    .to_string(),
+            ],
         )]
     }
 
