@@ -10,10 +10,9 @@
     edition = "2024";
   };
 
-  # Nix formatting (nixfmt-rfc-style is the new standard)
   programs.nixfmt = {
     enable = true;
-    package = pkgs.nixfmt-rfc-style;
+    package = pkgs.nixfmt;
   };
 
   # Shell script formatting and linting
