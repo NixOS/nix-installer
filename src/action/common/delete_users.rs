@@ -62,9 +62,7 @@ impl Action for DeleteUsersInGroup {
             }
         }
 
-        let mut explanation = vec![format!(
-            "The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"
-        )];
+        let mut explanation = vec!["The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted".to_string()];
         explanation.append(&mut delete_users_descriptions);
 
         vec![ActionDescription::new(self.tracing_synopsis(), explanation)]
@@ -86,9 +84,7 @@ impl Action for DeleteUsersInGroup {
             }
         }
 
-        let mut explanation = vec![format!(
-            "The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted"
-        )];
+        let mut explanation = vec!["The `auto-allocate-uids` feature allows Nix to create UIDs dynamically as needed, meaning these users leftover from a previous install can be deleted".to_string()];
         explanation.append(&mut delete_users_descriptions);
 
         vec![ActionDescription::new(self.tracing_synopsis(), explanation)]

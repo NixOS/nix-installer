@@ -163,7 +163,7 @@ impl Action for CreateApfsVolume {
             if output.status.success() {
                 break;
             } else if retry_tokens == 0 {
-                return Err(Self::error(ActionErrorKind::command_output(
+                Err(Self::error(ActionErrorKind::command_output(
                     &command, output,
                 )))?;
             } else {

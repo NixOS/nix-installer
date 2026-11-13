@@ -278,7 +278,7 @@ impl CommandExecute for Install {
                             for err in errs {
                                 report = report.error(err);
                             }
-                            return Err(report)?;
+                            Err(report)?;
                         },
                         Err(err) => {
                             if let Some(expected) = err.expected() {
@@ -289,7 +289,7 @@ impl CommandExecute for Install {
                                 eprintln!("{}", err.red());
                                 return Ok(ExitCode::FAILURE);
                             }
-                            return Err(err)?;
+                            Err(err)?;
                         },
                         _ => {
                             println!(
@@ -312,7 +312,7 @@ impl CommandExecute for Install {
                     }
 
                     let error = eyre!(err).wrap_err("Install failure");
-                    return Err(error)?;
+                    Err(error)?;
                 }
             },
             Ok(_) => {

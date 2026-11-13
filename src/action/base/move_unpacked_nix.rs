@@ -78,7 +78,7 @@ impl Action for MoveUnpackedNix {
         let dest_store = Path::new(DEST).join("store");
         if dest_store.exists() {
             if !dest_store.is_dir() {
-                return Err(Self::error(ActionErrorKind::PathWasNotDirectory(
+                Err(Self::error(ActionErrorKind::PathWasNotDirectory(
                     dest_store.clone(),
                 )))?;
             }

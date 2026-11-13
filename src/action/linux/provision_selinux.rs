@@ -58,9 +58,7 @@ impl Action for ProvisionSelinux {
     fn execute_description(&self) -> Vec<ActionDescription> {
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec![format!(
-                "On SELinux systems (such as Fedora) a policy for Nix needs to be configured for correct operation."
-            )],
+            vec!["On SELinux systems (such as Fedora) a policy for Nix needs to be configured for correct operation.".to_string()],
         )]
     }
 

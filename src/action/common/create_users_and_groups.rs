@@ -121,9 +121,7 @@ impl Action for CreateUsersAndGroups {
             }
         }
 
-        let mut explanation = vec![format!(
-            "The Nix daemon requires system users (and a group they share) which it can act as in order to build"
-        )];
+        let mut explanation = vec!["The Nix daemon requires system users (and a group they share) which it can act as in order to build".to_string()];
         if let Some(val) = create_group.describe_execute().first() {
             explanation.push(val.description.clone())
         }
@@ -184,9 +182,7 @@ impl Action for CreateUsersAndGroups {
             }
         }
 
-        let mut explanation = vec![format!(
-            "The Nix daemon requires system users (and a group they share) which it can act as in order to build"
-        )];
+        let mut explanation = vec!["The Nix daemon requires system users (and a group they share) which it can act as in order to build".to_string()];
         if let Some(val) = create_group.describe_revert().first() {
             explanation.push(val.description.clone())
         }
