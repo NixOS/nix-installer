@@ -1,0 +1,14 @@
+ARG BOOTC_BASE_IMAGE=quay.io/fedora/fedora-bootc:43
+FROM ${BOOTC_BASE_IMAGE}
+ARG NIX_PERSISTENCE=/var/lib/nix
+COPY nix-installer /tmp/nix-installer
+RUN test ! -e /root && \
+    /tmp/nix-installer install bootc --persistence "${NIX_PERSISTENCE}" \
+      --no-confirm --enable-flakes --extra-conf 'sandbox = false' && \
+    test ! -e /root && \
+    test -f /nix/receipt.json && \
+    test -x /usr/lib/nix-installer/nix-store-setup.sh && \
+    test ! -L /usr/lib/tmpfiles.d/nix-daemon.conf && \
+    systemctl --root=/ is-enabled nix.mount nix-daemon.socket && \
+    rm /tmp/nix-installer && \
+    bootc container lint --no-truncate
