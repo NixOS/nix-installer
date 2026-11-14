@@ -181,14 +181,14 @@ impl CommandExecute for Uninstall {
         match res {
             Err(err @ NixInstallerError::ActionRevert(_)) => {
                 tracing::error!("Uninstallation complete, some errors encountered");
-                return Err(err)?;
+                return Err(err.into());
             },
             Err(err) => {
                 if let Some(expected) = err.expected() {
                     println!("{}", expected.red());
                     return Ok(ExitCode::FAILURE);
                 }
-                return Err(err)?;
+                return Err(err.into());
             },
             _ => (),
         }

@@ -72,9 +72,10 @@ impl Action for CreateNixTree {
             ActionDescription::new(self.tracing_synopsis(), create_directory_descriptions),
             ActionDescription::new(
                 "Synchronize /nix/var ownership".to_string(),
-                vec![format!(
+                vec![
                     "Will update existing files in /nix/var to be owned by User ID 0, Group ID 0"
-                )],
+                        .to_string(),
+                ],
             ),
         ]
     }
@@ -94,9 +95,8 @@ impl Action for CreateNixTree {
         vec![ActionDescription::new(
             "Remove the directory tree in `/nix`".to_string(),
             vec![
-                format!(
-                    "Nix and the Nix daemon require a Nix Store, which will be stored at `/nix`"
-                ),
+                "Nix and the Nix daemon require a Nix Store, which will be stored at `/nix`"
+                    .to_string(),
                 format!(
                     "Removes: {}",
                     PATHS

@@ -180,9 +180,7 @@ impl Action for AddUserToGroup {
     fn execute_description(&self) -> Vec<ActionDescription> {
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec![format!(
-                "The Nix daemon requires the build users to be in a defined group"
-            )],
+            vec!["The Nix daemon requires the build users to be in a defined group".to_string()],
         )]
     }
 
@@ -246,9 +244,9 @@ impl Action for AddUserToGroup {
                 "Remove user `{}` (UID {}) from group {} (GID {})",
                 self.name, self.uid, self.groupname, self.gid
             ),
-            vec![format!(
-                "The Nix daemon requires system users it can act as in order to build"
-            )],
+            vec![
+                "The Nix daemon requires system users it can act as in order to build".to_string(),
+            ],
         )]
     }
 

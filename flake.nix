@@ -320,13 +320,13 @@
                 # Testing
                 act
               ]
-              ++ lib.optionals (pkgs.stdenv.isDarwin) (
+              ++ lib.optionals (pkgs.stdenv.hostPlatform.isDarwin) (
                 with pkgs;
                 [
                   libiconv
                 ]
               )
-              ++ lib.optionals (pkgs.stdenv.isLinux) (
+              ++ lib.optionals (pkgs.stdenv.hostPlatform.isLinux) (
                 with pkgs;
                 [
                   checkpolicy
@@ -418,7 +418,7 @@
           inherit (pkgs) nix-installer-static;
           default = pkgs.nix-installer-static;
         }
-        // lib.optionalAttrs (pkgs.stdenv.isDarwin) {
+        // lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin) {
           default = pkgs.nix-installer;
         }
       );

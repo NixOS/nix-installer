@@ -66,9 +66,7 @@ impl Action for DeleteUser {
     fn execute_description(&self) -> Vec<ActionDescription> {
         vec![ActionDescription::new(
             self.tracing_synopsis(),
-            vec![format!(
-                "Nix with `auto-allocate-uids = true` no longer requires explicitly created users, so this user can be removed"
-            )],
+            vec!["Nix with `auto-allocate-uids = true` no longer requires explicitly created users, so this user can be removed".to_string()],
         )]
     }
 
