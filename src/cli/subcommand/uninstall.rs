@@ -125,7 +125,7 @@ impl CommandExecute for Uninstall {
                             format!(
                             "\
                             Unable to parse plan, this plan was created by `nix-installer` version `{plan_version}`, this is `nix-installer` version `{current_version}`\n\
-                            To uninstall, either run  `/nix/nix-installer uninstall` or `curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- uninstall`\
+                            To uninstall, either run  `/nix/nix-installer uninstall` or `curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- uninstall`\
                             ").red().to_string()
                         });
                     },
@@ -142,7 +142,7 @@ impl CommandExecute for Uninstall {
                     \n\
                     Found existing plan in `{RECEIPT_LOCATION}` which was created by a version incompatible `nix-installer`.\n\
                     \n
-                    To uninstall, either run `/nix/nix-installer uninstall` or `curl --proto '=https' --tlsv1.2 -sSf -L https://artifacts.nixos.org/nix-installer | sh -s -- uninstall`\n\
+                    To uninstall, either run `/nix/nix-installer uninstall` or `curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- uninstall`\n\
                     \n\
                 ").red()
             );
