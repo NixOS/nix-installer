@@ -6,28 +6,28 @@ Status: Beta
 > This repo is undergoing [changes](https://github.com/NixOS/nix/issues/16134) to be integrated into the Nix release process.
 > Location of artifacts is subject to change.
 
-This is the official Nix installer maintained by the NixOS community. It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [`nixos.org/nix/install`](https://nixos.org/nix/install) shell script bundled with Nix.
+This is the official Nix installer maintained by the NixOS community and the [Nix team](https://nixos.org/community/teams/nix/).
+It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [scripted installer](https://nixos.org/nix/install).
 
 ## If you're having a problem with installing Nix, make sure to report issues in the right place.
 
 If you used `sh <(curl -L https://nixos.org/nix/install)`, report issues at https://github.com/NixOS/nix/issues.
 
-If you used the **Determinate Nix Installer**, report issues at https://github.com/DeterminateSystems/nix-installer.
-
-If you used **this installer**, report issues at https://github.com/NixOS/nix-installer/issues.
+If you used **this installer**, report issues at https://github.com/NixOS/nix-installer/issues, unless it's related to packaging, in
+which case report it at https://github.com/NixOS/nix/issues.
 
 ---
 
 This one-liner is the quickest way to get started on any supported system:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install
 ```
 
 To also enable the experimental `flakes` and `nix-command` features:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable-flakes
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install --enable-flakes
 ```
 
 | Platform                                                             |    Multi user?    | `root` only |     Maturity      |
@@ -38,24 +38,6 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --enable
 | [Windows Subsystem for Linux][wsl] 2 (WSL2) (`x86_64` and `aarch64`) | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Podman] Linux containers                                            | ✓ (via [systemd]) |      ✓      |      Stable       |
 | [Docker] containers                                                  |                   |      ✓      |      Stable       |
-
-## Install Nix
-
-You can install Nix with the default [planner](#planners) and options by running this script:
-
-```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
-```
-
-To download a platform-specific installer binary yourself:
-
-```shell
-curl -sL -o nix-installer https://artifacts.nixos.org/nix-installer/nix-installer-x86_64-linux
-chmod +x nix-installer
-./nix-installer
-```
-
-This would install Nix on an `x86_64-linux` system but you can replace that with the system of your choice.
 
 ### Planners
 
@@ -76,7 +58,7 @@ To see the options for Linux, for example:
 You can configure planners using environment variables or command arguments:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | NIX_BUILD_GROUP_NAME=nixbuilder sh -s -- install --nix-build-group-id 4000
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | NIX_BUILD_GROUP_NAME=nixbuilder sh -s -- install --nix-build-group-id 4000
 
 # Alternatively:
 
@@ -118,7 +100,7 @@ On the default [GitLab] runners, you can install Nix using this configuration:
 ```yaml
 test:
   script:
-    - curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --no-confirm --init none
+    - curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install linux --no-confirm --init none
     - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
     - nix run nixpkgs#hello
     - nix profile install nixpkgs#hello
@@ -139,7 +121,7 @@ If you are using different runners, the above example may need to be adjusted.
 If you don't use [systemd], you can still install Nix by explicitly specifying the `linux` plan and `--init none`:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --init none
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install linux --init none
 ```
 
 ### In a container
@@ -173,7 +155,7 @@ For containers (without an init):
 FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl -y
-RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
+RUN curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install linux \
   --extra-conf "sandbox = false" --enable-flakes --init none --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
@@ -196,7 +178,7 @@ For containers with a [systemd] init:
 FROM ubuntu:latest
 RUN apt update -y
 RUN apt install curl systemd -y
-RUN curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux \
+RUN curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install linux \
   --extra-conf "sandbox = false" --enable-flakes --no-start-daemon --no-confirm
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix run nixpkgs#hello
@@ -246,7 +228,7 @@ See the [action inputs](https://github.com/NixOS/nix-installer-action/tree/main?
 We **strongly recommend** first [enabling systemd][enabling-systemd] and then installing Nix as normal:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install
 ```
 
 If [WSLg][wslg] is enabled, you can do things like open a Linux Firefox from Windows on Powershell:
@@ -271,7 +253,7 @@ If enabling systemd is not an option, pass `--init none` at the end of the comma
 > ```
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --init none
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install linux --init none
 ```
 
 ### Skip confirmation
@@ -279,7 +261,7 @@ curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install linux --
 If you'd like to bypass the confirmation step, you can apply the `--no-confirm` flag:
 
 ```shell
-curl -sSfL https://artifacts.nixos.org/nix-installer | sh -s -- install --no-confirm
+curl -sSfL https://channels.nixos.org/nix-latest/nix-installer | sh -s -- install --no-confirm
 ```
 
 This is especially useful when using the installer in non-interactive scripts.
@@ -322,8 +304,8 @@ You can pin to a specific version of the Nix installer by modifying the download
 Here's an example:
 
 ```shell
-VERSION="v0.6.0"
-curl -sSfL https://artifacts.nixos.org/nix-installer/tag/${VERSION}/nix-installer.sh | sh -s -- install
+VERSION="2.36.0"
+curl -sSfL https://releases.nixos.org/nix/nix-${VERSION}/nix-installer | sh -s -- install
 ```
 
 To discover which versions are available, or download the binaries for any release, check the [Github Releases][releases].
@@ -332,9 +314,9 @@ You can download and use these releases directly.
 Here's an example:
 
 ```shell
-VERSION="v0.6.0"
+VERSION="2.36.0"
 ARCH="aarch64-linux"
-curl -sSf -L https://github.com/NixOS/nix-installer/releases/download/${VERSION}/nix-installer-${ARCH} -o nix-installer
+curl -sSf -L https://releases.nixos.org/nix/nix-${VERSION}/nix-installer-${ARCH} -o nix-installer
 ./nix-installer install
 ```
 
