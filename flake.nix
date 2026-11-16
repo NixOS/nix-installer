@@ -7,7 +7,7 @@
     crane.url = "github:ipetkov/crane";
 
     nix = {
-      url = "github:NixOS/nix";
+      url = "github:NixOS/nix/2.36-maintenance";
       # work around 7730 and https://github.com/NixOS/nix/issues/7807
       inputs.flake-compat.follows = "";
       inputs.nixpkgs-regression.follows = "";
