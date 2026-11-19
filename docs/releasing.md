@@ -102,6 +102,7 @@ Examples:
   $ git checkout -b bump-version
   $ export NEW_VERSION="next.nix.version" # e.g. "2.37.0"
   $ sed -i "s:$VERSION-dev:$NEW_VERSION-dev:g" ./Cargo.toml
+  $ nix run --inputs-from ./. -- nixpkgs#cargo update --workspace
   $ git add Cargo.toml Cargo.lock
   $ git commit -m "Bump version to $NEW_VERSION-dev"
   $ git push --set-upstream origin bump-version
