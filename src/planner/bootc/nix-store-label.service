@@ -1,0 +1,14 @@
+[Unit]
+Description=Label the persistent Nix store for SELinux
+DefaultDependencies=no
+Requires=nix.mount
+After=nix.mount
+Before=local-fs.target systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/restorecon -RF /nix
+
+[Install]
+WantedBy=local-fs.target

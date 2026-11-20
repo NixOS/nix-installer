@@ -100,6 +100,7 @@ match plan.install(None) {
 ```
 
 */
+pub mod bootc;
 pub mod linux;
 pub mod macos;
 pub mod ostree;
@@ -176,6 +177,10 @@ pub trait Planner: std::fmt::Debug + Send + Sync + dyn_clone::DynClone {
     fn try_default() -> Result<Self, PlannerError>
     where
         Self: Sized;
+    /// Whether the install environment can exercise the installed Nix.
+    fn should_run_self_test(&self) -> bool {
+        true
+    }
     /// Plan out the [`Action`]s for an [`InstallPlan`]
     fn plan(&self) -> Result<Vec<StatefulAction<Box<dyn Action>>>, PlannerError>;
     /// The settings being used by the planner
@@ -217,6 +222,9 @@ pub enum BuiltinPlanner {
     #[cfg_attr(not(target_os = "linux"), clap(hide = true))]
     /// A planner suitable for immutable systems using ostree, such as Fedora Silverblue
     Ostree(ostree::Ostree),
+    #[cfg_attr(not(target_os = "linux"), clap(hide = true))]
+    /// A planner for bootc container image builds
+    Bootc(bootc::Bootc),
     #[cfg_attr(not(target_os = "macos"), clap(hide = true))]
     /// A planner for MacOS (Darwin) systems
     Macos(macos::Macos),
@@ -231,9 +239,7 @@ impl BuiltinPlanner {
             (Architecture::X86_32(_), OperatingSystem::Linux) => {
                 Ok(Self::Linux(linux::Linux::try_default()?))
             },
-            (Architecture::Aarch64(_), OperatingSystem::Linux) => {
-                Ok(Self::Linux(linux::Linux::try_default()?))
-            },
+            (Architecture::Aarch64(_), OperatingSystem::Linux) => Self::detect_linux_distro(),
             (Architecture::X86_64, OperatingSystem::MacOSX(_))
             | (Architecture::X86_64, OperatingSystem::Darwin(_)) => {
                 Ok(Self::Macos(macos::Macos::try_default()?))
@@ -249,6 +255,16 @@ impl BuiltinPlanner {
     fn detect_linux_distro() -> Result<Self, PlannerError> {
         if LinuxDistro::detect() == LinuxDistro::SteamOS {
             return Ok(Self::SteamDeck(steam_deck::SteamDeck::try_default()?));
+        }
+
+        // A bootc CLI on a live system (deployed or merely installed) is not
+        // an image build; only select the bootc planner when no init is
+        // running, as in a container image build.
+        if std::path::Path::new("/usr/bin/bootc").exists()
+            && !std::path::Path::new("/run/ostree-booted").exists()
+            && !std::path::Path::new("/run/systemd/system").exists()
+        {
+            return Ok(Self::Bootc(bootc::Bootc::try_default()?));
         }
 
         let is_ostree = std::process::Command::new("ostree")
@@ -269,6 +285,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(inner) => inner.settings = settings,
             BuiltinPlanner::SteamDeck(inner) => inner.settings = settings,
             BuiltinPlanner::Ostree(inner) => inner.settings = settings,
+            BuiltinPlanner::Bootc(inner) => inner.settings = settings,
             BuiltinPlanner::Macos(inner) => inner.settings = settings,
         }
         Ok(built)
@@ -279,6 +296,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(inner) => &inner.settings,
             BuiltinPlanner::SteamDeck(inner) => &inner.settings,
             BuiltinPlanner::Ostree(inner) => &inner.settings,
+            BuiltinPlanner::Bootc(inner) => &inner.settings,
             BuiltinPlanner::Macos(inner) => &inner.settings,
         }
     }
@@ -288,6 +306,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(inner) => &mut inner.settings,
             BuiltinPlanner::SteamDeck(inner) => &mut inner.settings,
             BuiltinPlanner::Ostree(inner) => &mut inner.settings,
+            BuiltinPlanner::Bootc(inner) => &mut inner.settings,
             BuiltinPlanner::Macos(inner) => &mut inner.settings,
         }
     }
@@ -297,6 +316,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(inner) => inner.configured_settings(),
             BuiltinPlanner::SteamDeck(inner) => inner.configured_settings(),
             BuiltinPlanner::Ostree(inner) => inner.configured_settings(),
+            BuiltinPlanner::Bootc(inner) => inner.configured_settings(),
             BuiltinPlanner::Macos(inner) => inner.configured_settings(),
         }
     }
@@ -306,6 +326,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(planner) => InstallPlan::plan(planner),
             BuiltinPlanner::SteamDeck(planner) => InstallPlan::plan(planner),
             BuiltinPlanner::Ostree(planner) => InstallPlan::plan(planner),
+            BuiltinPlanner::Bootc(planner) => InstallPlan::plan(planner),
             BuiltinPlanner::Macos(planner) => InstallPlan::plan(planner),
         }
     }
@@ -314,6 +335,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(i) => i.boxed(),
             BuiltinPlanner::SteamDeck(i) => i.boxed(),
             BuiltinPlanner::Ostree(i) => i.boxed(),
+            BuiltinPlanner::Bootc(i) => i.boxed(),
             BuiltinPlanner::Macos(i) => i.boxed(),
         }
     }
@@ -323,6 +345,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(i) => i.typetag_name(),
             BuiltinPlanner::SteamDeck(i) => i.typetag_name(),
             BuiltinPlanner::Ostree(i) => i.typetag_name(),
+            BuiltinPlanner::Bootc(i) => i.typetag_name(),
             BuiltinPlanner::Macos(i) => i.typetag_name(),
         }
     }
@@ -332,6 +355,7 @@ impl BuiltinPlanner {
             BuiltinPlanner::Linux(i) => i.settings(),
             BuiltinPlanner::SteamDeck(i) => i.settings(),
             BuiltinPlanner::Ostree(i) => i.settings(),
+            BuiltinPlanner::Bootc(i) => i.settings(),
             BuiltinPlanner::Macos(i) => i.settings(),
         }
     }
@@ -488,6 +512,9 @@ impl HasExpectedErrors for PlannerError {
                 #[cfg(target_os = "macos")]
                 if let Some(err) = _e.downcast_ref::<macos::MacosError>() {
                     return err.expected();
+                }
+                if let Some(err) = _e.downcast_ref::<bootc::BootcError>() {
+                    return Some(Box::new(err));
                 }
                 None
             },

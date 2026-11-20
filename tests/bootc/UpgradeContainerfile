@@ -1,0 +1,7 @@
+FROM localhost/nix-installer-bootc:test
+RUN printf '%s\n' updated > /usr/lib/nix-installer-vm-image && \
+    printf '%s\n' image-update > /nix/bootc-vm-test-marker && \
+    printf '%s\n' image-seed > /nix/bootc-vm-image-only-marker && \
+    ln -s "$(readlink /nix/var/nix/profiles/default)" /nix/var/nix/profiles/default-image-update-link && \
+    ln -sfn default-image-update-link /nix/var/nix/profiles/default && \
+    bootc container lint --no-truncate

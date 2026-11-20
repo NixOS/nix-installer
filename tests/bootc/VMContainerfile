@@ -1,0 +1,4 @@
+FROM localhost/nix-installer-bootc:installed
+RUN systemctl --root=/ enable sshd.service && \
+    systemctl --root=/ set-default multi-user.target && \
+    bootc container lint --no-truncate
