@@ -755,6 +755,8 @@ dependencies = [
  "glob",
  "nix",
  "nix-config-parser",
+ "nix-installer-kernel",
+ "nix-installer-macros",
  "owo-colors",
  "plist",
  "rand",
@@ -773,6 +775,27 @@ dependencies = [
  "url",
  "walkdir",
  "zstd",
+]
+
+[[package]]
+name = "nix-installer-kernel"
+version = "0.1.0"
+dependencies = [
+ "nix-installer-macros",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "nix-installer-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Fake userdel. Removes the user's line from $KERNEL_TEST_STATE.
+state="${KERNEL_TEST_STATE:?KERNEL_TEST_STATE not set}"
+name="$1"
+[ -n "$name" ] || exit 2
+touch "$state"
+grep -v "^$name " "$state" >"$state.new"
+mv "$state.new" "$state"
+exit 0

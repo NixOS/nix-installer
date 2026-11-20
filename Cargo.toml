@@ -1,5 +1,10 @@
 [workspace]
-members = [".", "crates/nix-mountd"]
+members = [
+  ".",
+  "crates/nix-mountd",
+  "crates/nix-installer-kernel",
+  "crates/nix-installer-macros",
+]
 
 [package]
 name = "nix-installer"
@@ -18,6 +23,8 @@ name = "nix-installer"
 required-features = ["cli"]
 
 [dependencies]
+nix-installer-kernel = { path = "crates/nix-installer-kernel" }
+nix-installer-macros = { path = "crates/nix-installer-macros" }
 clap = { version = "4", features = [
   "std",
   "color",

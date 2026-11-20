@@ -145,6 +145,36 @@ let
         fi
       '';
     };
+    install-add-channel = {
+      # The channel update needs network, which the test VM does not have.
+      # The install fails at that step, after the channel file is written.
+      install = ''
+        if RUST_BACKTRACE="full" ./nix-installer install --no-confirm --logger pretty --log-directive nix_installer=debug --add-channel; then
+          echo "install with a channel should fail on the offline test network"
+          exit 1
+        fi
+      '';
+      check = ''
+        set -ex
+
+        [ "$(sudo stat -c %a /root/.nix-channels)" = 664 ]
+        sudo grep -q "nixpkgs-unstable" /root/.nix-channels
+      '';
+      uninstall = ''
+        /nix/nix-installer uninstall --no-confirm
+      '';
+      uninstallCheck = ''
+        if sudo test -f /root/.nix-channels; then
+          echo "/root/.nix-channels exists after uninstall"
+          exit 1
+        fi
+
+        if [ -d /nix/store ]; then
+          echo "/nix/store exists after uninstall"
+          exit 1
+        fi
+      '';
+    };
     install-no-start-daemon = {
       install = ''
         RUST_BACKTRACE="full" ./nix-installer install linux --no-confirm --logger pretty --log-directive nix_installer=info --no-start-daemon

@@ -2,11 +2,16 @@ use nix::unistd::{Group, User, chown};
 use tracing::{Span, span};
 
 use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    os::{unix::fs::MetadataExt, unix::fs::OpenOptionsExt, unix::fs::PermissionsExt},
+    fs::Metadata,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
+
+use nix_installer_kernel::{
+    ApplyGate, Assessment, Code, Executor, Failure, HostFacts, Outcome, Probe, RevertGate, Session, StepDecl,
+    StepHandler, fs::atomic_write,
+};
+use nix_installer_macros::step;
 
 use crate::{
     action::{Action, ActionDescription, ActionError, ActionErrorKind, ActionTag, StatefulAction},
@@ -19,8 +24,7 @@ optionally with an owning user, group, and mode.
 If `force` is set, the file will always be overwritten (and deleted)
 regardless of its presence prior to install.
  */
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
-#[serde(tag = "action_name", rename = "create_file")]
+#[step(name = "create_file", category = "base")]
 pub struct CreateFile {
     pub(crate) path: PathBuf,
     user: Option<String>,
@@ -28,6 +32,72 @@ pub struct CreateFile {
     mode: Option<u32>,
     buf: String,
     force: bool,
+}
+
+enum Mismatch {
+    NotFile,
+    Mode { found: u32, planned: u32 },
+    User { found: u32, planned: u32 },
+    Group { found: u32, planned: u32 },
+    Content,
+}
+
+impl Mismatch {
+    fn to_action_kind(&self, path: &Path) -> ActionErrorKind {
+        match self {
+            Mismatch::NotFile => ActionErrorKind::PathWasNotFile(path.to_path_buf()),
+            Mismatch::Mode { found, planned } => {
+                ActionErrorKind::PathModeMismatch(path.to_path_buf(), *found, *planned)
+            },
+            Mismatch::User { found, planned } => {
+                ActionErrorKind::PathUserMismatch(path.to_path_buf(), *found, *planned)
+            },
+            Mismatch::Group { found, planned } => {
+                ActionErrorKind::PathGroupMismatch(path.to_path_buf(), *found, *planned)
+            },
+            Mismatch::Content => ActionErrorKind::DifferentContent(path.to_path_buf()),
+        }
+    }
+
+    /// Only a content difference has its own code. Attribute conflicts share
+    /// [`Code::PathConflict`].
+    fn to_drift(&self, path: &Path) -> Assessment {
+        let (remedy, detail) = match self {
+            Mismatch::NotFile => (
+                Code::PathConflict,
+                format!("`{}` exists, but is not a file", path.display()),
+            ),
+            Mismatch::Mode { found, planned } => (
+                Code::PathConflict,
+                format!(
+                    "`{}` exists with mode {found:o}, but {planned:o} was planned",
+                    path.display()
+                ),
+            ),
+            Mismatch::User { found, planned } => (
+                Code::PathConflict,
+                format!(
+                    "`{}` exists with uid {found}, but {planned} was planned",
+                    path.display()
+                ),
+            ),
+            Mismatch::Group { found, planned } => (
+                Code::PathConflict,
+                format!(
+                    "`{}` exists with gid {found}, but {planned} was planned",
+                    path.display()
+                ),
+            ),
+            Mismatch::Content => (
+                Code::DifferentContent,
+                format!(
+                    "`{}` exists with different content than planned",
+                    path.display()
+                ),
+            ),
+        };
+        Assessment::drift(remedy, detail)
+    }
 }
 
 impl CreateFile {
@@ -40,109 +110,211 @@ impl CreateFile {
         buf: String,
         force: bool,
     ) -> Result<StatefulAction<Self>, ActionError> {
-        let path = path.as_ref().to_path_buf();
-        let mode = mode.into();
-        let user = user.into();
-        let group = group.into();
         let this = Self {
-            path,
-            user,
-            group,
-            mode,
+            path: path.as_ref().to_path_buf(),
+            user: user.into(),
+            group: group.into(),
+            mode: mode.into(),
             buf,
             force,
         };
 
-        if this.path.exists() {
-            // If the path exists, perhaps we can just skip this
-            let mut file = File::open(&this.path)
-                .map_err(|e| ActionErrorKind::Open(this.path.clone(), e))
-                .map_err(Self::error)?;
-
-            let metadata = file
-                .metadata()
-                .map_err(|e| ActionErrorKind::GettingMetadata(this.path.clone(), e))
-                .map_err(Self::error)?;
-
-            if !metadata.is_file() {
-                return Err(Self::error(ActionErrorKind::PathWasNotFile(this.path)));
-            }
-
-            if let Some(mode) = mode {
-                // Does the file have the right permissions?
-                let discovered_mode = metadata.permissions().mode();
-                // We only care about user-group-other permissions
-                let discovered_mode = discovered_mode & 0o777;
-
-                if discovered_mode != mode {
-                    return Err(Self::error(ActionErrorKind::PathModeMismatch(
-                        this.path.clone(),
-                        discovered_mode,
-                        mode,
-                    )));
-                }
-            }
-
-            // Does it have the right user/group?
-            if let Some(user) = &this.user {
-                // If the file exists, the user must also exist to be correct.
-                let expected_uid = User::from_name(user.as_str())
-                    .map_err(|e| ActionErrorKind::GettingUserId(user.clone(), e))
-                    .map_err(Self::error)?
-                    .ok_or_else(|| ActionErrorKind::NoUser(user.clone()))
-                    .map_err(Self::error)?
-                    .uid;
-                let found_uid = metadata.uid();
-                if found_uid != expected_uid.as_raw() {
-                    return Err(Self::error(ActionErrorKind::PathUserMismatch(
-                        this.path.clone(),
-                        found_uid,
-                        expected_uid.as_raw(),
-                    )));
-                }
-            }
-            if let Some(group) = &this.group {
-                // If the file exists, the group must also exist to be correct.
-                let expected_gid = Group::from_name(group.as_str())
-                    .map_err(|e| ActionErrorKind::GettingGroupId(group.clone(), e))
-                    .map_err(Self::error)?
-                    .ok_or_else(|| ActionErrorKind::NoUser(group.clone()))
-                    .map_err(Self::error)?
-                    .gid;
-                let found_gid = metadata.gid();
-                if found_gid != expected_gid.as_raw() {
-                    return Err(Self::error(ActionErrorKind::PathGroupMismatch(
-                        this.path.clone(),
-                        found_gid,
-                        expected_gid.as_raw(),
-                    )));
-                }
-            }
-
-            // Does it have the right content?
-            let mut discovered_buf = String::new();
-            file.read_to_string(&mut discovered_buf)
-                .map_err(|e| ActionErrorKind::Read(this.path.clone(), e))
-                .map_err(Self::error)?;
-
-            if discovered_buf != this.buf {
-                return Err(Self::error(ActionErrorKind::DifferentContent(
-                    this.path.clone(),
-                )));
-            }
-
-            tracing::debug!("Creating file `{}` already complete", this.path.display());
-            return Ok(StatefulAction::completed(this));
+        match std::fs::metadata(&this.path) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Ok(StatefulAction::uncompleted(this))
+            },
+            Err(err) => Err(Self::error(ActionErrorKind::GettingMetadata(
+                this.path.clone(),
+                err,
+            ))),
+            Ok(metadata) => match this.mismatch(&metadata)? {
+                Some(mismatch) => Err(Self::error(mismatch.to_action_kind(&this.path))),
+                None => {
+                    tracing::debug!("Creating file `{}` already complete", this.path.display());
+                    Ok(StatefulAction::completed(this))
+                },
+            },
         }
+    }
 
-        Ok(StatefulAction::uncompleted(this))
+    /// Checks type, mode, owner, group, then content, and returns the first
+    /// difference.
+    fn mismatch(&self, metadata: &Metadata) -> Result<Option<Mismatch>, ActionError> {
+        if !metadata.is_file() {
+            return Ok(Some(Mismatch::NotFile));
+        }
+        if let Some(planned) = self.mode {
+            let found = metadata.permissions().mode() & 0o777;
+            if found != planned {
+                return Ok(Some(Mismatch::Mode { found, planned }));
+            }
+        }
+        if let Some(user) = &self.user {
+            let planned = Self::planned_uid(user)?;
+            let found = metadata.uid();
+            if found != planned {
+                return Ok(Some(Mismatch::User { found, planned }));
+            }
+        }
+        if let Some(group) = &self.group {
+            let planned = Self::planned_gid(group)?;
+            let found = metadata.gid();
+            if found != planned {
+                return Ok(Some(Mismatch::Group { found, planned }));
+            }
+        }
+        let found = std::fs::read_to_string(&self.path)
+            .map_err(|e| ActionErrorKind::Read(self.path.clone(), e))
+            .map_err(Self::error)?;
+        if found != self.buf {
+            return Ok(Some(Mismatch::Content));
+        }
+        Ok(None)
+    }
+
+    /// Errors if `user` does not exist.
+    fn planned_uid(user: &str) -> Result<u32, ActionError> {
+        User::from_name(user)
+            .map_err(|e| ActionErrorKind::GettingUserId(user.to_string(), e))
+            .map_err(Self::error)?
+            .ok_or_else(|| ActionErrorKind::NoUser(user.to_string()))
+            .map_err(Self::error)
+            .map(|user| user.uid.as_raw())
+    }
+
+    /// Errors if `group` does not exist.
+    fn planned_gid(group: &str) -> Result<u32, ActionError> {
+        Group::from_name(group)
+            .map_err(|e| ActionErrorKind::GettingGroupId(group.to_string(), e))
+            .map_err(Self::error)?
+            .ok_or_else(|| ActionErrorKind::NoGroup(group.to_string()))
+            .map_err(Self::error)
+            .map(|group| group.gid.as_raw())
+    }
+
+    fn session() -> Session {
+        Session::new(HostFacts::detect(), Executor::Real)
+    }
+
+    /// Content drift keeps its legacy error. Everything else is wrapped
+    /// as is.
+    fn to_action_error(&self, failure: Failure) -> ActionError {
+        let kind = match failure.code {
+            Code::DifferentContent => ActionErrorKind::DifferentContent(self.path.clone()),
+            _ => ActionErrorKind::Custom(Box::new(failure)),
+        };
+        Self::error(kind)
+    }
+
+    /// `Indeterminate` has no legacy equivalent, so it surfaces as a
+    /// transient failure.
+    fn indeterminate_error(&self, probe: &Probe) -> ActionError {
+        Self::error(ActionErrorKind::Custom(Box::new(Failure::new(
+            Code::Transient,
+            format!(
+                "could not determine the state of `{}`: {}",
+                self.path.display(),
+                probe.describe()
+            ),
+        ))))
+    }
+}
+
+impl StepHandler for CreateFile {
+    /// A path that cannot be statted for a reason other than absence is
+    /// `Indeterminate` and not an error, so a re-run can re-check it.
+    fn assess(&self, _session: &Session) -> Result<Assessment, Failure> {
+        match std::fs::metadata(&self.path) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Assessment::Todo),
+            Err(_) => Ok(Assessment::Indeterminate {
+                probe: Probe::PathContent {
+                    path: self.path.clone(),
+                },
+            }),
+            Ok(metadata) => match self
+                .mismatch(&metadata)
+                .map_err(|err| Failure::new(Code::Io, err.to_string()))?
+            {
+                Some(mismatch) => Ok(mismatch.to_drift(&self.path)),
+                None => Ok(Assessment::Done),
+            },
+        }
+    }
+
+    fn apply(&self, session: &mut Session) -> Result<Outcome, Failure> {
+        if let ApplyGate::Settled(outcome) = self.assess(session)?.apply_gate()? {
+            return Ok(outcome);
+        }
+        atomic_write(&self.path, self.buf.as_bytes(), self.mode).map_err(|err| {
+            Failure::new(
+                Code::Io,
+                format!("writing `{}`: {err}", self.path.display()),
+            )
+        })?;
+        self.chown()?;
+        Ok(Outcome::Applied)
+    }
+
+    /// A drifted file is removed too, since refusing to uninstall over a
+    /// user's edit would strand the machine.
+    fn revert(&self, session: &mut Session) -> Result<Outcome, Failure> {
+        match self.assess(session)?.revert_gate() {
+            RevertGate::NothingToDo => Ok(Outcome::Applied),
+            RevertGate::Revert | RevertGate::BestEffort { .. } | RevertGate::Unknown { .. } => {
+                self.remove()?;
+                Ok(Outcome::Applied)
+            },
+        }
+    }
+}
+
+impl CreateFile {
+    fn remove(&self) -> Result<(), Failure> {
+        crate::util::remove_file(&self.path, OnMissing::Ignore).map_err(|err| {
+            Failure::new(
+                Code::Io,
+                format!("removing `{}`: {err}", self.path.display()),
+            )
+        })
+    }
+
+    fn chown(&self) -> Result<(), Failure> {
+        let uid = match &self.user {
+            Some(user) => Some(
+                User::from_name(user.as_str())
+                    .map_err(|err| Failure::new(Code::Io, format!("getting user `{user}`: {err}")))?
+                    .ok_or_else(|| Failure::new(Code::Io, format!("no such user `{user}`")))?
+                    .uid,
+            ),
+            None => None,
+        };
+        let gid = match &self.group {
+            Some(group) => Some(
+                Group::from_name(group.as_str())
+                    .map_err(|err| {
+                        Failure::new(Code::Io, format!("getting group `{group}`: {err}"))
+                    })?
+                    .ok_or_else(|| Failure::new(Code::Io, format!("no such group `{group}`")))?
+                    .gid,
+            ),
+            None => None,
+        };
+        if uid.is_some() || gid.is_some() {
+            chown(&self.path, uid, gid).map_err(|err| {
+                Failure::new(
+                    Code::Io,
+                    format!("chowning `{}`: {err}", self.path.display()),
+                )
+            })?;
+        }
+        Ok(())
     }
 }
 
 #[typetag::serde(name = "create_file")]
 impl Action for CreateFile {
     fn action_tag() -> ActionTag {
-        ActionTag("create_file")
+        ActionTag(Self::META.name)
     }
     fn tracing_synopsis(&self) -> String {
         format!("Create or overwrite file `{}`", self.path.display())
@@ -151,7 +323,7 @@ impl Action for CreateFile {
     fn tracing_span(&self) -> Span {
         let span = span!(
             tracing::Level::DEBUG,
-            "create_file",
+            CreateFile::META.name,
             path = tracing::field::display(self.path.display()),
             user = self.user,
             group = self.group,
@@ -178,85 +350,27 @@ impl Action for CreateFile {
             span.record("buf", &self.buf);
         }
 
-        let mut options = OpenOptions::new();
-        options.create_new(true).write(true).read(true);
-
-        if let Some(mode) = self.mode {
-            options.mode(mode);
+        let mut session = Self::session();
+        match self.apply(&mut session) {
+            Ok(Outcome::Applied) => Ok(()),
+            Ok(Outcome::Indeterminate { probe }) => Err(self.indeterminate_error(&probe)),
+            Err(failure) => Err(self.to_action_error(failure)),
         }
-
-        let mut file = options
-            .open(&self.path)
-            .map_err(|e| ActionErrorKind::Open(self.path.to_owned(), e))
-            .map_err(Self::error)?;
-
-        file.write_all(self.buf.as_bytes())
-            .map_err(|e| ActionErrorKind::Write(self.path.to_owned(), e))
-            .map_err(Self::error)?;
-
-        let gid = if let Some(ref group) = self.group {
-            Some(
-                Group::from_name(group.as_str())
-                    .map_err(|e| ActionErrorKind::GettingGroupId(group.clone(), e))
-                    .map_err(Self::error)?
-                    .ok_or(ActionErrorKind::NoGroup(group.clone()))
-                    .map_err(Self::error)?
-                    .gid,
-            )
-        } else {
-            None
-        };
-        let uid = if let Some(ref user) = self.user {
-            Some(
-                User::from_name(user.as_str())
-                    .map_err(|e| ActionErrorKind::GettingUserId(user.clone(), e))
-                    .map_err(Self::error)?
-                    .ok_or(ActionErrorKind::NoUser(user.clone()))
-                    .map_err(Self::error)?
-                    .uid,
-            )
-        } else {
-            None
-        };
-        chown(&self.path, uid, gid)
-            .map_err(|e| ActionErrorKind::Chown(self.path.clone(), e))
-            .map_err(Self::error)?;
-
-        Ok(())
     }
 
     fn revert_description(&self) -> Vec<ActionDescription> {
-        let Self {
-            path,
-            user: _,
-            group: _,
-            mode: _,
-            buf: _,
-            force: _,
-        } = &self;
-
         vec![ActionDescription::new(
-            format!("Delete file `{}`", path.display()),
-            vec![format!("Delete file `{}`", path.display())],
+            format!("Delete file `{}`", self.path.display()),
+            vec![format!("Delete file `{}`", self.path.display())],
         )]
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     fn revert(&mut self) -> Result<(), ActionError> {
-        let Self {
-            path,
-            user: _,
-            group: _,
-            mode: _,
-            buf: _,
-            force: _,
-        } = self;
-
-        crate::util::remove_file(path, OnMissing::Ignore)
-            .map_err(|e| ActionErrorKind::Remove(path.to_owned(), e))
-            .map_err(Self::error)?;
-
-        Ok(())
+        let mut session = Self::session();
+        StepHandler::revert(self, &mut session)
+            .map(|_| ())
+            .map_err(|failure| self.to_action_error(failure))
     }
 }
 
@@ -462,6 +576,33 @@ mod test {
                 ));
             },
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn execute_refuses_a_file_that_drifted_after_planning() -> eyre::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let test_file = temp_dir
+            .path()
+            .join("execute_refuses_a_file_that_drifted_after_planning");
+        let mut action =
+            CreateFile::plan(test_file.clone(), None, None, None, "Test".into(), false)?;
+
+        write(test_file.as_path(), "Someone else got here first")?;
+
+        match action.try_execute() {
+            Err(error) => match error.kind() {
+                ActionErrorKind::DifferentContent(path) => assert_eq!(path, test_file.as_path()),
+                _ => return Err(eyre!("drift must surface as DifferentContent")),
+            },
+            Ok(()) => return Err(eyre!("execute must refuse a drifted file")),
+        }
+        assert_eq!(
+            std::fs::read_to_string(&test_file)?,
+            "Someone else got here first",
+            "the drifted file must be untouched"
+        );
 
         Ok(())
     }
