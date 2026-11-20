@@ -85,6 +85,20 @@ pub struct Macos {
         )
     )]
     pub use_ec2_instance_store: bool,
+
+    /// Don't exclude `/nix/store` and `/nix/var` from Time Machine backups
+    ///
+    /// Useful on ephemeral machines such as CI runners, where backups never run.
+    #[cfg_attr(
+        feature = "cli",
+        clap(
+            long,
+            default_value = "false",
+            env = "NIX_INSTALLER_NO_TIME_MACHINE_EXCLUSIONS"
+        )
+    )]
+    #[serde(default)]
+    pub no_time_machine_exclusions: bool,
 }
 
 fn default_root_disk() -> Result<String, PlannerError> {
@@ -127,6 +141,7 @@ impl Planner for Macos {
         Ok(Self {
             settings: CommonSettings::try_default()?,
             use_ec2_instance_store: false,
+            no_time_machine_exclusions: false,
             root_disk: Some(default_root_disk()?),
             case_sensitive: false,
             encrypt: None,
@@ -227,12 +242,20 @@ impl Planner for Macos {
             CreateUsersAndGroups::plan(self.settings.clone())
                 .map_err(PlannerError::Action)?
                 .boxed(),
-            SetTmutilExclusions::plan(vec![
-                PathBuf::from(NIX_STORE_LOCATION),
-                PathBuf::from("/nix/var"),
-            ])
-            .map_err(PlannerError::Action)?
-            .boxed(),
+        ]);
+
+        if !self.no_time_machine_exclusions {
+            plan.push(
+                SetTmutilExclusions::plan(vec![
+                    PathBuf::from(NIX_STORE_LOCATION),
+                    PathBuf::from("/nix/var"),
+                ])
+                .map_err(PlannerError::Action)?
+                .boxed(),
+            );
+        }
+
+        plan.extend([
             ConfigureNix::plan(ShellProfileLocations::default(), &self.settings)
                 .map_err(PlannerError::Action)?
                 .boxed(),
@@ -269,6 +292,7 @@ impl Planner for Macos {
             case_sensitive,
             root_disk,
             use_ec2_instance_store,
+            no_time_machine_exclusions,
         } = self;
         let mut map = HashMap::default();
 
@@ -279,6 +303,10 @@ impl Planner for Macos {
         map.insert(
             "use_ec2_instance_store".into(),
             serde_json::to_value(use_ec2_instance_store)?,
+        );
+        map.insert(
+            "no_time_machine_exclusions".into(),
+            serde_json::to_value(no_time_machine_exclusions)?,
         );
         map.insert(
             "case_sensitive".into(),
