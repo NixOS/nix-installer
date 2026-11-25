@@ -87,6 +87,15 @@ pub struct Macos {
     pub use_ec2_instance_store: bool,
 }
 
+fn filevault_is_active(command: &mut Command) -> Result<bool, PlannerError> {
+    let output = command
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|e| PlannerError::Custom(Box::new(e)))?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim() == "true")
+}
+
 fn default_root_disk() -> Result<String, PlannerError> {
     let buf = execute_command(
         Command::new("/usr/sbin/diskutil")
@@ -167,19 +176,8 @@ impl Planner for Macos {
                 }
             },
             None => {
-                let root_disk_is_encrypted = {
-                    let output = Command::new("/usr/bin/fdesetup")
-                        .arg("isactive")
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .output()
-                        .map_err(|e| PlannerError::Custom(Box::new(e)))?;
-
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stdout_trimmed = stdout.trim();
-
-                    stdout_trimmed == "true"
-                };
+                let root_disk_is_encrypted =
+                    filevault_is_active(Command::new("/usr/bin/fdesetup").arg("isactive"))?;
 
                 let existing_store_volume_is_encrypted = {
                     if let Some(diskutil_info) =
