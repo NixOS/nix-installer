@@ -37,15 +37,11 @@ pub struct Macos {
     #[cfg_attr(feature = "cli", clap(flatten))]
     pub settings: CommonSettings,
 
-    /// Force encryption on the volume
+    /// Encrypt the Nix Store volume. Defaults to the startup disk's FileVault setting.
+    /// An existing encrypted Nix Store volume stays encrypted.
     #[cfg_attr(
         feature = "cli",
-        clap(
-            long,
-            action(ArgAction::Set),
-            default_value = "false",
-            env = "NIX_INSTALLER_ENCRYPT"
-        )
+        clap(long, action(ArgAction::Set), env = "NIX_INSTALLER_ENCRYPT")
     )]
     pub encrypt: Option<bool>,
     /// Use a case sensitive volume
@@ -89,7 +85,6 @@ pub struct Macos {
 
 fn filevault_is_active(command: &mut Command) -> Result<bool, PlannerError> {
     let output = command
-        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
         .map_err(|e| PlannerError::Custom(Box::new(e)))?;
@@ -471,6 +466,35 @@ impl HasExpectedErrors for MacosError {
             this @ MacosError::UninstallNixDarwin => Some(Box::new(this)),
             this @ MacosError::BlockedBySystemUIServerPolicy(_) => Some(Box::new(this)),
             this @ MacosError::UnsupportedMacosVersion { .. } => Some(Box::new(this)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_filevault_from_command_output() {
+        assert!(filevault_is_active(Command::new("sh").args(["-c", "echo true"])).unwrap());
+        assert!(
+            !filevault_is_active(Command::new("sh").args(["-c", "echo false; exit 1"])).unwrap()
+        );
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn encrypt_option_defaults_to_auto_detection() {
+        use clap::{CommandFactory, FromArgMatches};
+
+        let command = Macos::command().mut_arg("encrypt", |arg| arg.env(None::<&str>));
+        for (args, expected) in [
+            (&["macos"][..], None),
+            (&["macos", "--encrypt", "true"], Some(true)),
+            (&["macos", "--encrypt", "false"], Some(false)),
+        ] {
+            let matches = command.clone().get_matches_from(args);
+            assert_eq!(Macos::from_arg_matches(&matches).unwrap().encrypt, expected);
         }
     }
 }
