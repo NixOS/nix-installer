@@ -1,17 +1,11 @@
 # Nix Installer
 
-Status: Beta
-
-> [!IMPORTANT]
-> This repo is undergoing [changes](https://github.com/NixOS/nix/issues/16134) to be integrated into the Nix release process.
-> Location of artifacts is subject to change.
-
 This is the official Nix installer maintained by the NixOS community and the [Nix team](https://nixos.org/community/teams/nix/).
-It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [scripted installer](https://nixos.org/nix/install).
+It is different from the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer) and the [scripted installer](https://channels.nixos.org/nix-latest/install).
 
 ## If you're having a problem with installing Nix, make sure to report issues in the right place.
 
-If you used `sh <(curl -L https://nixos.org/nix/install)`, report issues at https://github.com/NixOS/nix/issues.
+If you used `sh <(curl -L https://nixos.org/nix/install)` or `sh <(curl -L https://channels.nixos.org/nix-latest/install)`, report issues at https://github.com/NixOS/nix/issues.
 
 If you used **this installer**, report issues at https://github.com/NixOS/nix-installer/issues, unless it's related to packaging, in
 which case report it at https://github.com/NixOS/nix/issues.
@@ -308,7 +302,7 @@ VERSION="2.36.0"
 curl -sSfL https://releases.nixos.org/nix/nix-${VERSION}/nix-installer | sh -s -- install
 ```
 
-To discover which versions are available, or download the binaries for any release, check the [Github Releases][releases].
+Starting with Nix 2.36, installer binaries are published alongside each Nix release.
 
 You can download and use these releases directly.
 Here's an example:
@@ -417,7 +411,6 @@ nix-installer uninstall /path/to/receipt.json
 [nixos]: https://zero-to-nix.com/concepts/nixos
 [openssl]: https://openssl.org
 [podman]: https://podman.io
-[releases]: https://github.com/NixOS/nix-installer/releases
 [selinux]: https://selinuxproject.org
 [steam-deck]: https://store.steampowered.com/steamdeck
 [systemd]: https://systemd.io
