@@ -1,0 +1,4 @@
+#!/bin/sh
+# Echoes $KERNEL_TEST_MARKER, proving the session environment reaches the
+# child process.
+echo "${KERNEL_TEST_MARKER:?KERNEL_TEST_MARKER not set}"
