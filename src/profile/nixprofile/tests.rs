@@ -108,6 +108,7 @@ fn test_detect_intersection() {
         return;
     }
 
+    let nix_store_path = super::super::find_nix_store_path();
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
@@ -115,8 +116,8 @@ fn test_detect_intersection() {
     let tree_2 = sample_tree("bar", "foo", "b");
 
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_1, &tree_2],
     })
@@ -130,6 +131,7 @@ fn test_no_intersection() {
         return;
     }
 
+    let nix_store_path = super::super::find_nix_store_path();
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
@@ -137,8 +139,8 @@ fn test_no_intersection() {
     let tree_2 = sample_tree("bar", "bar", "b");
 
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_1, &tree_2],
     })
@@ -158,8 +160,8 @@ fn test_no_intersection() {
     let tree_4 = sample_tree("tux", "tux", "d");
 
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_3, &tree_4],
     })
@@ -182,14 +184,15 @@ fn test_overlap_replaces() {
         return;
     }
 
+    let nix_store_path = super::super::find_nix_store_path();
     let profile = tempfile::tempdir().unwrap();
     let profile_path = profile.path().join("profile");
 
     let tree_base = sample_tree("fizz", "fizz", "fizz");
     let tree_1 = sample_tree("foo", "foo", "a");
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_base, &tree_1],
     })
@@ -207,8 +210,8 @@ fn test_overlap_replaces() {
 
     let tree_2 = sample_tree("foo", "foo", "b");
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_2],
     })
@@ -222,8 +225,8 @@ fn test_overlap_replaces() {
 
     let tree_3 = sample_tree("bar", "foo", "c");
     (NixProfile {
-        nix_store_path: Path::new("/nix/var/nix/profiles/default/"),
-        nss_ca_cert_path: Path::new("/nix/var/nix/profiles/default/"),
+        nix_store_path: &nix_store_path,
+        nss_ca_cert_path: &nix_store_path,
         profile: &profile_path,
         pkgs: &[&tree_3],
     })
