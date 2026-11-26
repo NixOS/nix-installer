@@ -14,7 +14,7 @@ use std::{
 use tracing::{Span, span};
 
 use super::{
-    CreateVolumeService, DARWIN_LAUNCHD_DOMAIN, KickstartLaunchctlService,
+    CreateVolumeService, DARWIN_LAUNCHD_DOMAIN, KickstartLaunchctlService, SuppressVolumeIndexing,
     create_fstab_entry::CreateFstabEntry,
 };
 
@@ -39,6 +39,7 @@ pub struct CreateNixVolume {
     bootstrap_volume: StatefulAction<BootstrapLaunchctlService>,
     kickstart_launchctl_service: StatefulAction<KickstartLaunchctlService>,
     enable_ownership: StatefulAction<EnableOwnership>,
+    suppress_indexing: StatefulAction<SuppressVolumeIndexing>,
 }
 
 impl CreateNixVolume {
@@ -98,6 +99,7 @@ impl CreateNixVolume {
             KickstartLaunchctlService::plan(DARWIN_LAUNCHD_DOMAIN, NIX_VOLUME_MOUNTD_NAME)
                 .map_err(Self::error)?;
         let enable_ownership = EnableOwnership::plan("/nix").map_err(Self::error)?;
+        let suppress_indexing = SuppressVolumeIndexing::plan("/nix").map_err(Self::error)?;
 
         Ok(Self {
             disk: disk.to_path_buf(),
@@ -114,6 +116,7 @@ impl CreateNixVolume {
             bootstrap_volume,
             kickstart_launchctl_service,
             enable_ownership,
+            suppress_indexing,
         }
         .into())
     }
@@ -156,6 +159,7 @@ impl Action for CreateNixVolume {
         explanation.push(self.setup_volume_daemon.tracing_synopsis());
         explanation.push(self.bootstrap_volume.tracing_synopsis());
         explanation.push(self.enable_ownership.tracing_synopsis());
+        explanation.push(self.suppress_indexing.tracing_synopsis());
 
         vec![ActionDescription::new(self.tracing_synopsis(), explanation)]
     }
@@ -212,6 +216,7 @@ impl Action for CreateNixVolume {
         crate::action::macos::wait_for_nix_store_dir().map_err(Self::error)?;
 
         self.enable_ownership.try_execute().map_err(Self::error)?;
+        self.suppress_indexing.try_execute().map_err(Self::error)?;
 
         Ok(())
     }
@@ -230,6 +235,7 @@ impl Action for CreateNixVolume {
         explanation.push(self.setup_volume_daemon.tracing_synopsis());
         explanation.push(self.bootstrap_volume.tracing_synopsis());
         explanation.push(self.enable_ownership.tracing_synopsis());
+        explanation.push(self.suppress_indexing.tracing_synopsis());
 
         vec![ActionDescription::new(
             format!(
@@ -244,6 +250,10 @@ impl Action for CreateNixVolume {
     #[tracing::instrument(level = "debug", skip_all)]
     fn revert(&mut self) -> Result<(), ActionError> {
         let mut errors = vec![];
+
+        if let Err(err) = self.suppress_indexing.try_revert() {
+            errors.push(err);
+        }
 
         if let Err(err) = self.enable_ownership.try_revert() {
             errors.push(err);
